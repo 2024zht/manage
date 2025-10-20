@@ -10,8 +10,8 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 获取服务器IP
-SERVER_IP=$(hostname -I | awk '{print $1}')
+# 设置服务器IP
+SERVER_IP="129.226.147.57"
 
 echo "📋 服务器IP: $SERVER_IP"
 echo ""
@@ -40,7 +40,7 @@ cd frontend && npm install && cd ..
 echo "[4/8] 配置环境变量..."
 if [ ! -f backend/.env ]; then
     cat > backend/.env << EOF
-PORT=3000
+PORT=3010
 JWT_SECRET=9YAdzuhzaUTCL/5Xxwx6gHoV8SPF4pC1LlCkHXXpL2I=
 NODE_ENV=production
 DATABASE_PATH=./database.sqlite
@@ -83,7 +83,7 @@ pm2 startup
 
 # 9. 配置防火墙
 echo "🔒 配置防火墙..."
-ufw allow 3000
+ufw allow 3010
 ufw allow 2111
 ufw --force enable
 
@@ -92,7 +92,7 @@ echo "🎉 部署完成！"
 echo "=================================="
 echo "📱 访问地址："
 echo "   前端: http://$SERVER_IP:2111"
-echo "   后端API: http://$SERVER_IP:3000/api"
+echo "   后端API: http://$SERVER_IP:3010/api"
 echo "   管理员登录: http://$SERVER_IP:2111/admin/login"
 echo ""
 echo "👤 默认管理员账户："

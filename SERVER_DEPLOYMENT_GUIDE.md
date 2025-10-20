@@ -81,12 +81,12 @@ pm2 startup
 
 ```bash
 # 开放防火墙端口
-sudo ufw allow 3000
+sudo ufw allow 3010
 sudo ufw allow 2111
 
 # 访问地址
-# 前端: http://your-server-ip:2111
-# 后端API: http://your-server-ip:3000/api
+# 前端: http://129.226.147.57:2111
+# 后端API: http://129.226.147.57:3010/api
 ```
 
 ### 方法2: 使用Nginx反向代理（推荐）
@@ -107,7 +107,7 @@ sudo nano /etc/nginx/sites-available/robotlab-manage
 ```nginx
 server {
     listen 80;
-    server_name your-server-ip;  # 替换为您的服务器IP
+    server_name 129.226.147.57;  # 您的服务器IP
 
     # 前端静态文件
     location / {
@@ -117,7 +117,7 @@ server {
 
     # 后端API代理
     location /api {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3010;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -139,7 +139,7 @@ sudo systemctl restart nginx
 
 4. **访问地址**:
 ```
-http://your-server-ip
+http://129.226.147.57
 ```
 
 ## 🔍 测试部署
@@ -153,21 +153,21 @@ pm2 status
 pm2 logs robotlab-manage
 
 # 查看端口占用
-sudo netstat -tlnp | grep :3000
+sudo netstat -tlnp | grep :3010
 ```
 
 ### 2. 测试API
 ```bash
 # 测试后端API
-curl http://your-server-ip:3000/api/users
+curl http://129.226.147.57:3010/api/users
 
 # 测试前端
-curl http://your-server-ip:2111
+curl http://129.226.147.57:2111
 ```
 
 ### 3. 浏览器访问
-- 前端: `http://your-server-ip:2111` 或 `http://your-server-ip`
-- 管理员登录: `http://your-server-ip:2111/admin/login`
+- 前端: `http://129.226.147.57:2111` 或 `http://129.226.147.57`
+- 管理员登录: `http://129.226.147.57:2111/admin/login`
 
 ## 🛠️ 常用管理命令
 
@@ -210,6 +210,8 @@ pm2 restart robotlab-manage
 sudo ufw allow 22    # SSH
 sudo ufw allow 80    # HTTP
 sudo ufw allow 443   # HTTPS (如果使用SSL)
+sudo ufw allow 3010  # 后端API
+sudo ufw allow 2111  # 前端
 sudo ufw enable
 ```
 
@@ -225,7 +227,7 @@ sudo ufw enable
 
 1. **端口被占用**:
 ```bash
-sudo lsof -i :3000
+sudo lsof -i :3010
 sudo kill -9 <PID>
 ```
 
@@ -249,9 +251,7 @@ pm2 logs robotlab-manage --lines 50
 
 部署完成后，您可以通过以下地址访问：
 
-- **前端界面**: `http://your-server-ip:2111`
-- **管理员登录**: `http://your-server-ip:2111/admin/login`
-- **后端API**: `http://your-server-ip:3000/api`
-- **使用Nginx**: `http://your-server-ip`
-
-将 `your-server-ip` 替换为您的实际服务器IP地址。
+- **前端界面**: `http://129.226.147.57:2111`
+- **管理员登录**: `http://129.226.147.57:2111/admin/login`
+- **后端API**: `http://129.226.147.57:3010/api`
+- **使用Nginx**: `http://129.226.147.57`
