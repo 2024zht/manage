@@ -85,7 +85,6 @@ const LeaveApproval: React.FC = () => {
                       <span className="font-semibold text-lg">
                         {leave.name} ({leave.studentId})
                       </span>
-                      <span className="text-sm text-gray-600">- {leave.className}</span>
                     </div>
                     
                     <div className="space-y-1 text-sm text-gray-700">

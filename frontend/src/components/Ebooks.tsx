@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ebookAPI } from '../services/api';
 import { Ebook } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Book, Download, Upload, Trash2, HardDrive } from 'lucide-react';
+import { Book, Download, Upload, HardDrive } from 'lucide-react';
 
 const Ebooks: React.FC = () => {
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
@@ -48,17 +48,6 @@ const Ebooks: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number, filename: string) => {
-    if (!window.confirm(`确定要删除 "${filename}" 吗？`)) return;
-
-    try {
-      await ebookAPI.delete(id);
-      alert('删除成功');
-      fetchEbooks();
-    } catch (error) {
-      alert('删除失败');
-    }
-  };
 
   const handleDownload = async (ebook: Ebook) => {
     try {

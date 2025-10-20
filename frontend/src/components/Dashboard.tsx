@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Rule, PointLog } from '../types';
 import { userAPI, ruleAPI } from '../services/api';
-import { Trophy, Medal, Award, TrendingUp, Edit2, X, History, AlertCircle, Undo2, Plus, Minus, Key } from 'lucide-react';
+import { Trophy, Medal, Award, TrendingUp, Edit2, X, History, AlertCircle, Undo2, Plus, Key } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard: React.FC = () => {
@@ -56,13 +56,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleOpenModal = (user: User) => {
-    setSelectedUser(user);
-    setShowModal(true);
-    setSelectedRule(null);
-    setCustomPoints('');
-    setCustomReason('');
-  };
 
   const handleOpenPointManageModal = async (user: User) => {
     setManageUser(user);
