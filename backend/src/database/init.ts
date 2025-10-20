@@ -9,6 +9,9 @@ const initDatabase = async () => {
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           username TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          studentId TEXT UNIQUE NOT NULL,
+          className TEXT NOT NULL,
           email TEXT UNIQUE NOT NULL,
           password TEXT NOT NULL,
           isAdmin INTEGER DEFAULT 0,
@@ -71,8 +74,8 @@ const initDatabase = async () => {
       const hashedPassword = await bcrypt.hash('admin123', 10);
       await new Promise<void>((resolve, reject) => {
         db.run(
-          'INSERT INTO users (username, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?)',
-          ['admin', 'admin@robotlab.com', hashedPassword, 1, 0],
+          'INSERT INTO users (username, name, studentId, className, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          ['admin', '系统管理员', 'ADMIN001', '管理员', 'admin@robotlab.com', hashedPassword, 1, 0],
           (err) => {
             if (err) reject(err);
             else resolve();
@@ -81,6 +84,76 @@ const initDatabase = async () => {
       });
       console.log('Default admin user created (username: admin, password: admin123)');
     }
+
+    // 创建积分申诉表
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS point_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          userId INTEGER NOT NULL,
+          points INTEGER NOT NULL,
+          reason TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          respondedAt DATETIME,
+          respondedBy INTEGER,
+          adminComment TEXT,
+          FOREIGN KEY (userId) REFERENCES users(id),
+          FOREIGN KEY (respondedBy) REFERENCES users(id)
+        )
+      `, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Point requests table created');
+
+    // 创建请假表
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS leaves (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          userId INTEGER NOT NULL,
+          leaveType TEXT NOT NULL,
+          startTime DATETIME NOT NULL,
+          endTime DATETIME NOT NULL,
+          duration TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          respondedAt DATETIME,
+          respondedBy INTEGER,
+          rejectReason TEXT,
+          FOREIGN KEY (userId) REFERENCES users(id),
+          FOREIGN KEY (respondedBy) REFERENCES users(id)
+        )
+      `, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Leaves table created');
+
+    // 创建电子书表
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ebooks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          filename TEXT NOT NULL,
+          originalName TEXT NOT NULL,
+          fileSize INTEGER NOT NULL,
+          uploadedBy INTEGER NOT NULL,
+          uploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          b2Synced INTEGER DEFAULT 0,
+          b2Path TEXT,
+          FOREIGN KEY (uploadedBy) REFERENCES users(id)
+        )
+      `, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Ebooks table created');
 
     // 检查是否已有规则
     const rulesExist = await new Promise<boolean>((resolve) => {

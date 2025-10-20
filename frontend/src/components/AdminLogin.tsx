@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogIn } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
-const Login: React.FC = () => {
+const AdminLogin: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,7 +18,20 @@ const Login: React.FC = () => {
 
     try {
       await login(username, password);
-      navigate('/');
+      
+      // 检查是否为管理员
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        if (!user.isAdmin) {
+          setError('您没有管理员权限，请使用管理员账户登录');
+          logout();
+          setLoading(false);
+          return;
+        }
+      }
+      
+      navigate('/admin');
     } catch (err: any) {
       setError(err.response?.data?.error || '登录失败，请检查用户名和密码');
     } finally {
@@ -27,31 +40,33 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-6 sm:p-10 rounded-xl shadow-2xl">
         <div>
           <div className="flex justify-center">
-            <div className="bg-primary-100 p-3 rounded-full">
-              <LogIn className="h-8 w-8 sm:h-10 sm:w-10 text-primary-600" />
+            <div className="bg-purple-100 p-3 rounded-full">
+              <Shield className="h-8 w-8 sm:h-10 sm:w-10 text-purple-600" />
             </div>
           </div>
           <h2 className="mt-6 text-center text-2xl sm:text-3xl font-extrabold text-gray-900">
-            实验室管理系统
+            管理员登录
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            请登录您的账户
+            仅限管理员访问
           </p>
         </div>
+        
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
             </div>
           )}
+          
           <div className="space-y-4">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                用户名
+                管理员用户名
               </label>
               <input
                 id="username"
@@ -60,10 +75,11 @@ const Login: React.FC = () => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
-                placeholder="请输入用户名"
+                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
+                placeholder="请输入管理员用户名"
               />
             </div>
+            
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                 密码
@@ -75,7 +91,7 @@ const Login: React.FC = () => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
                 placeholder="请输入密码"
               />
             </div>
@@ -85,30 +101,30 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2 sm:py-3 px-4 border border-transparent text-sm sm:text-base font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="group relative w-full flex justify-center py-2 sm:py-3 px-4 border border-transparent text-sm sm:text-base font-medium rounded-lg text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? '登录中...' : '登录'}
+              {loading ? '登录中...' : '管理员登录'}
             </button>
           </div>
 
-          <div className="text-center space-y-2">
-            <div>
-              <span className="text-sm text-gray-600">还没有账户？</span>{' '}
-              <Link to="/register" className="text-sm font-medium text-primary-600 hover:text-primary-500">
-                立即注册
-              </Link>
-            </div>
-            <div className="pt-2 border-t border-gray-200">
-              <Link to="/admin/login" className="text-sm font-medium text-purple-600 hover:text-purple-500 flex items-center justify-center">
-                <span>🔐 管理员登录入口</span>
-              </Link>
-            </div>
+          <div className="text-center">
+            <Link to="/login" className="text-sm font-medium text-purple-600 hover:text-purple-500">
+              ← 返回普通用户登录
+            </Link>
           </div>
         </form>
+
+        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-xs text-yellow-800">
+            <strong>默认管理员账户：</strong><br />
+            用户名: admin<br />
+            密码: admin123
+          </p>
+        </div>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default AdminLogin;
 

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { User, Rule } from '../types';
+import { User, Rule, PointRequest } from '../types';
 import { userAPI, ruleAPI } from '../services/api';
-import { Settings, Users, BookOpen, Edit2, Trash2, Plus, Save, X } from 'lucide-react';
+import { Settings, Users, BookOpen, Edit2, Trash2, Plus, Save, X, Upload, Download, MessageSquare, Check, XCircle } from 'lucide-react';
 
 const Admin: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'rules'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'rules' | 'import' | 'requests'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
+  const [requests, setRequests] = useState<PointRequest[]>([]);
   const [loading, setLoading] = useState(true);
   
   // 编辑规则状态
@@ -14,18 +15,27 @@ const Admin: React.FC = () => {
   const [newRule, setNewRule] = useState({ name: '', points: 0, description: '' });
   const [showAddRule, setShowAddRule] = useState(false);
 
+  // 批量导入状态
+  const [importData, setImportData] = useState('');
+  const [importReason, setImportReason] = useState('');
+  const [importResult, setImportResult] = useState<any>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const [usersRes, rulesRes] = await Promise.all([
+      const [usersRes, rulesRes, requestsRes] = await Promise.all([
         userAPI.getAll(),
-        ruleAPI.getAll()
+        ruleAPI.getAll(),
+        userAPI.getAllRequests()
       ]);
       setUsers(usersRes.data);
       setRules(rulesRes.data);
+      setRequests(requestsRes.data);
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
@@ -113,6 +123,126 @@ const Admin: React.FC = () => {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        setImportData(text);
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+  };
+
+  const handleBatchImport = async () => {
+    if (!importData || !importReason) {
+      alert('请填写导入数据和原因');
+      return;
+    }
+
+    try {
+      // 解析CSV数据
+      const lines = importData.trim().split('\n');
+      const records = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.startsWith('学号')) continue; // 跳过空行和表头
+
+        const parts = line.split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          records.push({
+            studentId: parts[0],
+            points: parseInt(parts[1])
+          });
+        }
+      }
+
+      if (records.length === 0) {
+        alert('没有有效的导入数据');
+        return;
+      }
+
+      // 调用API
+      const response = await fetch('/api/users/batch-import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ records, reason: importReason })
+      });
+
+      const result = await response.json();
+      setImportResult(result);
+      
+      if (result.success > 0) {
+        // 显示成功提示
+        setShowSuccessModal(true);
+        
+        // 清空输入
+        setImportData('');
+        setImportReason('');
+        setSelectedFile(null);
+        
+        // 清空文件输入
+        const fileInput = document.getElementById('csvFileInput') as HTMLInputElement;
+        if (fileInput) {
+          fileInput.value = '';
+        }
+        
+        // 刷新数据
+        fetchData();
+        
+        // 3秒后自动关闭成功提示
+        setTimeout(() => {
+          setShowSuccessModal(false);
+        }, 3000);
+      } else {
+        // 如果全部失败，不清空数据，方便用户修改重试
+        alert('导入失败，请检查数据格式');
+      }
+    } catch (error) {
+      alert('导入失败');
+      console.error(error);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = `学号,积分,备注
+2021001,10,完成实验报告
+2021002,15,参加组会并发言
+2021003,-5,迟到`;
+    
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = '批量导入模板.csv';
+    link.click();
+  };
+
+  const handleApproveRequest = async (requestId: number, adminComment?: string) => {
+    try {
+      await userAPI.handleRequest(requestId, 'approved', adminComment);
+      alert('已批准该异议');
+      fetchData();
+    } catch (error) {
+      alert('操作失败');
+    }
+  };
+
+  const handleRejectRequest = async (requestId: number, adminComment?: string) => {
+    try {
+      await userAPI.handleRequest(requestId, 'rejected', adminComment);
+      alert('已拒绝该异议');
+      fetchData();
+    } catch (error) {
+      alert('操作失败');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -153,6 +283,33 @@ const Admin: React.FC = () => {
             >
               <BookOpen className="inline-block h-5 w-5 mr-2" />
               规则管理
+            </button>
+            <button
+              onClick={() => setActiveTab('import')}
+              className={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm sm:text-base ${
+                activeTab === 'import'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Upload className="inline-block h-5 w-5 mr-2" />
+              批量导入
+            </button>
+            <button
+              onClick={() => setActiveTab('requests')}
+              className={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm sm:text-base relative ${
+                activeTab === 'requests'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <MessageSquare className="inline-block h-5 w-5 mr-2" />
+              异议管理
+              {requests.filter(r => r.status === 'pending').length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {requests.filter(r => r.status === 'pending').length}
+                </span>
+              )}
             </button>
           </nav>
         </div>
@@ -370,7 +527,323 @@ const Admin: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* 批量导入 */}
+        {activeTab === 'import' && (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-2">📋 导入说明</h4>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• 支持CSV格式：学号,积分,备注</li>
+                <li>• 积分可以是正数（加分）或负数（扣分）</li>
+                <li>• 学号必须在系统中已存在</li>
+                <li>• 每行一条记录，逗号分隔</li>
+              </ul>
+              <button
+                onClick={downloadTemplate}
+                className="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                下载模板文件
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                上传CSV文件或手动输入
+              </label>
+              
+              {/* 文件上传 */}
+              <div className="mb-3">
+                <div className="flex items-center space-x-3">
+                  <input
+                    id="csvFileInput"
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="csvFileInput"
+                    className="cursor-pointer inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    选择CSV文件
+                  </label>
+                  {selectedFile && (
+                    <span className="text-sm text-gray-600 flex items-center">
+                      <span className="mr-2">📄 {selectedFile.name}</span>
+                      <button
+                        onClick={() => {
+                          setSelectedFile(null);
+                          setImportData('');
+                          const fileInput = document.getElementById('csvFileInput') as HTMLInputElement;
+                          if (fileInput) fileInput.value = '';
+                        }}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 文本输入 */}
+              <textarea
+                value={importData}
+                onChange={(e) => setImportData(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+                rows={10}
+                placeholder={`学号,积分,备注
+2021001,10,完成实验报告
+2021002,15,参加组会并发言
+2021003,-5,迟到`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                导入原因（必填）
+              </label>
+              <input
+                type="text"
+                value={importReason}
+                onChange={(e) => setImportReason(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                placeholder="例如：第一次作业成绩"
+              />
+            </div>
+
+            <button
+              onClick={handleBatchImport}
+              disabled={!importData || !importReason}
+              className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium flex items-center justify-center"
+            >
+              <Upload className="h-5 w-5 mr-2" />
+              开始导入
+            </button>
+
+            {importResult && (
+              <div className={`p-4 rounded-lg ${
+                importResult.failed === 0 ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
+              }`}>
+                <h4 className="font-semibold mb-2">
+                  {importResult.failed === 0 ? '✅ 导入成功' : '⚠️ 导入完成（部分失败）'}
+                </h4>
+                <div className="text-sm space-y-1">
+                  <p className="text-green-700">成功: {importResult.success} 条</p>
+                  {importResult.failed > 0 && (
+                    <p className="text-red-700">失败: {importResult.failed} 条</p>
+                  )}
+                  {importResult.errors && importResult.errors.length > 0 && (
+                    <div className="mt-3">
+                      <p className="font-medium text-red-800 mb-1">错误详情:</p>
+                      <ul className="text-red-700 space-y-1">
+                        {importResult.errors.map((err: string, idx: number) => (
+                          <li key={idx}>• {err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-2">💡 使用提示</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>1. 点击"下载模板文件"获取CSV模板</li>
+                <li>2. 使用Excel或记事本编辑模板，填入数据</li>
+                <li>3. 复制数据粘贴到上方文本框</li>
+                <li>4. 填写导入原因（如"第一次作业"）</li>
+                <li>5. 点击"开始导入"执行批量操作</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* 异议管理 */}
+        {activeTab === 'requests' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">
+                用户异议列表
+                <span className="ml-2 text-sm text-gray-500">
+                  (待处理: {requests.filter(r => r.status === 'pending').length})
+                </span>
+              </h3>
+            </div>
+
+            {/* 待处理异议 */}
+            <div className="mb-6">
+              <h4 className="font-medium text-orange-700 mb-3">⏳ 待处理异议</h4>
+              {requests.filter(r => r.status === 'pending').length > 0 ? (
+                <div className="space-y-3">
+                  {requests.filter(r => r.status === 'pending').map((request) => (
+                    <div key={request.id} className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <span className="font-semibold text-gray-900">
+                              {request.name} ({request.studentId})
+                            </span>
+                            <span className="text-sm text-gray-600">- {request.className}</span>
+                          </div>
+                          <div className="flex items-center space-x-2 mb-2">
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                              request.points > 0 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              申请 {request.points > 0 ? '+' : ''}{request.points} 分
+                            </span>
+                          </div>
+                          <p className="text-gray-700 mb-2">
+                            <strong>理由:</strong> {request.reason}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            📅 {new Date(request.createdAt).toLocaleString('zh-CN')}
+                          </p>
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <button
+                            onClick={() => {
+                              const comment = prompt('批准理由（可选）:');
+                              if (comment !== null) {
+                                handleApproveRequest(request.id, comment || undefined);
+                              }
+                            }}
+                            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm whitespace-nowrap"
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            批准
+                          </button>
+                          <button
+                            onClick={() => {
+                              const comment = prompt('拒绝理由（必填）:');
+                              if (comment) {
+                                handleRejectRequest(request.id, comment);
+                              }
+                            }}
+                            className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm whitespace-nowrap"
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            拒绝
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                  暂无待处理异议
+                </div>
+              )}
+            </div>
+
+            {/* 已处理异议 */}
+            <div>
+              <h4 className="font-medium text-gray-700 mb-3">📋 已处理异议</h4>
+              {requests.filter(r => r.status !== 'pending').length > 0 ? (
+                <div className="space-y-3">
+                  {requests.filter(r => r.status !== 'pending').map((request) => (
+                    <div 
+                      key={request.id} 
+                      className={`p-4 border rounded-lg ${
+                        request.status === 'approved' 
+                          ? 'bg-green-50 border-green-200' 
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <span className="font-semibold text-gray-900">
+                              {request.name} ({request.studentId})
+                            </span>
+                            <span className="text-sm text-gray-600">- {request.className}</span>
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              request.status === 'approved'
+                                ? 'bg-green-200 text-green-800'
+                                : 'bg-gray-200 text-gray-800'
+                            }`}>
+                              {request.status === 'approved' ? '✓ 已批准' : '✗ 已拒绝'}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2 mb-2">
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                              request.points > 0 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {request.points > 0 ? '+' : ''}{request.points} 分
+                            </span>
+                          </div>
+                          <p className="text-gray-700 mb-1">
+                            <strong>用户理由:</strong> {request.reason}
+                          </p>
+                          {request.adminComment && (
+                            <p className="text-gray-700 mb-1">
+                              <strong>管理员备注:</strong> {request.adminComment}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                            <span>📅 提交时间: {new Date(request.createdAt).toLocaleString('zh-CN')}</span>
+                            {request.respondedAt && (
+                              <>
+                                <span>✓ 处理时间: {new Date(request.respondedAt).toLocaleString('zh-CN')}</span>
+                                {request.respondedByUsername && (
+                                  <span>👤 处理人: {request.respondedByUsername}</span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                  暂无历史记录
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* 成功提示悬浮窗 */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full text-center animate-fade-in">
+            <div className="mb-4">
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">导入成功！</h3>
+            {importResult && (
+              <div className="text-gray-600 space-y-1">
+                <p className="text-lg">成功导入 <span className="text-green-600 font-bold">{importResult.success}</span> 条记录</p>
+                {importResult.failed > 0 && (
+                  <p className="text-sm text-red-600">失败 {importResult.failed} 条</p>
+                )}
+              </div>
+            )}
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="mt-6 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

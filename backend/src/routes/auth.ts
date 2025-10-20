@@ -10,6 +10,9 @@ const router = express.Router();
 // 注册
 router.post('/register',
   body('username').trim().isLength({ min: 3, max: 30 }).withMessage('用户名长度必须在3-30个字符之间'),
+  body('name').trim().notEmpty().withMessage('姓名不能为空'),
+  body('studentId').trim().notEmpty().withMessage('学号不能为空'),
+  body('className').trim().notEmpty().withMessage('班级不能为空'),
   body('email').isEmail().withMessage('邮箱格式不正确'),
   body('password').isLength({ min: 6 }).withMessage('密码长度至少为6个字符'),
   async (req: Request, res: Response) => {
@@ -18,17 +21,17 @@ router.post('/register',
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { username, email, password } = req.body;
+    const { username, name, studentId, className, email, password } = req.body;
 
     try {
-      // 检查用户名是否已存在
+      // 检查用户名、学号或邮箱是否已存在
       const existingUser = await getOne<User>(
-        'SELECT * FROM users WHERE username = ? OR email = ?',
-        [username, email]
+        'SELECT * FROM users WHERE username = ? OR email = ? OR studentId = ?',
+        [username, email, studentId]
       );
 
       if (existingUser) {
-        return res.status(400).json({ error: '用户名或邮箱已存在' });
+        return res.status(400).json({ error: '用户名、学号或邮箱已存在' });
       }
 
       // 加密密码
@@ -36,8 +39,8 @@ router.post('/register',
 
       // 创建用户
       await runQuery(
-        'INSERT INTO users (username, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?)',
-        [username, email, hashedPassword, 0, 0]
+        'INSERT INTO users (username, name, studentId, className, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [username, name, studentId, className, email, hashedPassword, 0, 0]
       );
 
       res.status(201).json({ message: '注册成功' });
@@ -91,6 +94,9 @@ router.post('/login',
         user: {
           id: user.id,
           username: user.username,
+          name: user.name,
+          studentId: user.studentId,
+          className: user.className,
           email: user.email,
           isAdmin: Boolean(user.isAdmin),
           points: user.points

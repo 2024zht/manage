@@ -3,10 +3,14 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
+import AdminLogin from './components/AdminLogin';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import Rules from './components/Rules';
 import Admin from './components/Admin';
+import LeaveRequest from './components/LeaveRequest';
+import LeaveApproval from './components/LeaveApproval';
+import Ebooks from './components/Ebooks';
 
 const PrivateRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -64,12 +68,16 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/admin/login" element={<PublicRoute><AdminLogin /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
           
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="rules" element={<Rules />} />
+            <Route path="leaves" element={<LeaveRequest />} />
+            <Route path="ebooks" element={<Ebooks />} />
             <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
+            <Route path="admin/leave-approval" element={<AdminRoute><LeaveApproval /></AdminRoute>} />
           </Route>
         </Routes>
       </AuthProvider>

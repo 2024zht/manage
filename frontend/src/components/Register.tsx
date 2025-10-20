@@ -5,6 +5,9 @@ import { UserPlus } from 'lucide-react';
 
 const Register: React.FC = () => {
   const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
+  const [studentId, setStudentId] = useState('');
+  const [className, setClassName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -30,7 +33,7 @@ const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      await register(username, email, password);
+      await register(username, name, studentId, className, email, password);
       alert('注册成功！请登录');
       navigate('/login');
     } catch (err: any) {
@@ -79,6 +82,51 @@ const Register: React.FC = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
                 placeholder="请输入用户名（3-30个字符）"
+              />
+            </div>
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                姓名
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                placeholder="请输入真实姓名"
+              />
+            </div>
+            <div>
+              <label htmlFor="studentId" className="block text-sm font-medium text-gray-700 mb-1">
+                学号
+              </label>
+              <input
+                id="studentId"
+                name="studentId"
+                type="text"
+                required
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                placeholder="请输入学号"
+              />
+            </div>
+            <div>
+              <label htmlFor="className" className="block text-sm font-medium text-gray-700 mb-1">
+                班级
+              </label>
+              <input
+                id="className"
+                name="className"
+                type="text"
+                required
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                className="appearance-none relative block w-full px-3 py-2 sm:py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                placeholder="请输入班级"
               />
             </div>
             <div>

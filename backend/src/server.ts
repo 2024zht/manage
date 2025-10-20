@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import ruleRoutes from './routes/rules';
+import leaveRoutes from './routes/leaves';
+import ebookRoutes from './routes/ebooks';
 
 // 加载环境变量
 dotenv.config();
@@ -20,6 +22,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rules', ruleRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/ebooks', ebookRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

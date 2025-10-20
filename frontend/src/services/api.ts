@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User, Rule, AuthResponse, PointLog } from '../types';
+import { User, Rule, AuthResponse, PointLog, PointRequest, Leave, Ebook } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -32,8 +32,8 @@ api.interceptors.response.use(
 
 // 认证API
 export const authAPI = {
-  register: (username: string, email: string, password: string) =>
-    api.post('/auth/register', { username, email, password }),
+  register: (username: string, name: string, studentId: string, className: string, email: string, password: string) =>
+    api.post('/auth/register', { username, name, studentId, className, email, password }),
   
   login: (username: string, password: string) =>
     api.post<AuthResponse>('/auth/login', { username, password }),
@@ -53,7 +53,24 @@ export const userAPI = {
   setAdmin: (id: number, isAdmin: boolean) =>
     api.patch(`/users/${id}/admin`, { isAdmin }),
   
+  updatePassword: (id: number, newPassword: string) =>
+    api.patch(`/users/${id}/password`, { newPassword }),
+  
   getLogs: (id: number) => api.get<PointLog[]>(`/users/${id}/logs`),
+  
+  // 撤销积分修改
+  revertPointLog: (logId: number) => api.delete(`/users/point-logs/${logId}`),
+  
+  // 异议相关
+  submitRequest: (points: number, reason: string) =>
+    api.post('/users/requests', { points, reason }),
+  
+  getMyRequests: () => api.get<PointRequest[]>('/users/my-requests'),
+  
+  getAllRequests: () => api.get<PointRequest[]>('/users/requests'),
+  
+  handleRequest: (id: number, status: 'approved' | 'rejected', adminComment?: string) =>
+    api.patch(`/users/requests/${id}`, { status, adminComment }),
 };
 
 // 规则API
@@ -69,6 +86,38 @@ export const ruleAPI = {
     api.put(`/rules/${id}`, { name, points, description }),
   
   delete: (id: number) => api.delete(`/rules/${id}`),
+};
+
+// 请假API
+export const leaveAPI = {
+  submit: (leaveType: string, startTime: string, endTime: string, duration: string, reason: string) =>
+    api.post('/leaves', { leaveType, startTime, endTime, duration, reason }),
+  
+  getMyLeaves: () => api.get<Leave[]>('/leaves/my-leaves'),
+  
+  getAll: (status?: string) => api.get<Leave[]>('/leaves', { params: { status } }),
+  
+  approve: (id: number, rejectReason?: string) =>
+    api.patch(`/leaves/${id}`, { status: 'approved', rejectReason }),
+  
+  reject: (id: number, rejectReason: string) =>
+    api.patch(`/leaves/${id}`, { status: 'rejected', rejectReason }),
+};
+
+// 电子书API
+export const ebookAPI = {
+  getAll: () => api.get<Ebook[]>('/ebooks'),
+  
+  upload: (formData: FormData) =>
+    api.post('/ebooks/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+  
+  delete: (id: number) => api.delete(`/ebooks/${id}`),
+  
+  getDownloadUrl: (filename: string) => api.get(`/ebooks/download/${encodeURIComponent(filename)}`),
 };
 
 export default api;

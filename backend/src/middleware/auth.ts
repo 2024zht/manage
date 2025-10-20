@@ -4,6 +4,7 @@ import { JWTPayload } from '../types';
 
 export interface AuthRequest extends Request {
   user?: JWTPayload;
+  file?: Express.Multer.File;
 }
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
