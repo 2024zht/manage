@@ -82,10 +82,10 @@ pm2 startup
 ```bash
 # 开放防火墙端口
 sudo ufw allow 3000
-sudo ufw allow 5173
+sudo ufw allow 2111
 
 # 访问地址
-# 前端: http://your-server-ip:5173
+# 前端: http://your-server-ip:2111
 # 后端API: http://your-server-ip:3000/api
 ```
 
@@ -162,12 +162,12 @@ sudo netstat -tlnp | grep :3000
 curl http://your-server-ip:3000/api/users
 
 # 测试前端
-curl http://your-server-ip:5173
+curl http://your-server-ip:2111
 ```
 
 ### 3. 浏览器访问
-- 前端: `http://your-server-ip:5173` 或 `http://your-server-ip`
-- 管理员登录: `http://your-server-ip:5173/admin/login`
+- 前端: `http://your-server-ip:2111` 或 `http://your-server-ip`
+- 管理员登录: `http://your-server-ip:2111/admin/login`
 
 ## 🛠️ 常用管理命令
 
@@ -249,8 +249,8 @@ pm2 logs robotlab-manage --lines 50
 
 部署完成后，您可以通过以下地址访问：
 
-- **前端界面**: `http://your-server-ip:5173`
-- **管理员登录**: `http://your-server-ip:5173/admin/login`
+- **前端界面**: `http://your-server-ip:2111`
+- **管理员登录**: `http://your-server-ip:2111/admin/login`
 - **后端API**: `http://your-server-ip:3000/api`
 - **使用Nginx**: `http://your-server-ip`
 

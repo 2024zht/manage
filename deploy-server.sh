@@ -84,16 +84,16 @@ pm2 startup
 # 9. 配置防火墙
 echo "🔒 配置防火墙..."
 ufw allow 3000
-ufw allow 5173
+ufw allow 2111
 ufw --force enable
 
 echo ""
 echo "🎉 部署完成！"
 echo "=================================="
 echo "📱 访问地址："
-echo "   前端: http://$SERVER_IP:5173"
+echo "   前端: http://$SERVER_IP:2111"
 echo "   后端API: http://$SERVER_IP:3000/api"
-echo "   管理员登录: http://$SERVER_IP:5173/admin/login"
+echo "   管理员登录: http://$SERVER_IP:2111/admin/login"
 echo ""
 echo "👤 默认管理员账户："
 echo "   用户名: admin"
