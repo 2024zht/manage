@@ -108,11 +108,12 @@ export const leaveAPI = {
 export const ebookAPI = {
   getAll: () => api.get<Ebook[]>('/ebooks'),
   
-  upload: (formData: FormData) =>
+  upload: (formData: FormData, onUploadProgress?: (progressEvent: any) => void) =>
     api.post('/ebooks/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      onUploadProgress,
     }),
   
   delete: (id: number) => api.delete(`/ebooks/${id}`),
