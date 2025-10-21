@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Home, BookOpen, Settings, LogOut, Menu, X, User, Calendar, Book, CheckCircle } from 'lucide-react';
+import { Home, BookOpen, Settings, LogOut, Menu, X, User, Calendar, Book, CheckCircle, MapPin } from 'lucide-react';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -20,10 +20,12 @@ const Layout: React.FC = () => {
     { name: '积分看板', path: '/', icon: Home },
     { name: '规则展示', path: '/rules', icon: BookOpen },
     { name: '请假申请', path: '/leaves', icon: Calendar },
+    { name: '点名签到', path: '/attendance', icon: MapPin },
     { name: '电子书库', path: '/ebooks', icon: Book },
     ...(user?.isAdmin ? [
       { name: '管理面板', path: '/admin', icon: Settings },
       { name: '请假审批', path: '/admin/leave-approval', icon: CheckCircle },
+      { name: '点名管理', path: '/admin/attendance', icon: MapPin },
     ] : []),
   ];
 

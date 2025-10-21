@@ -11,6 +11,8 @@ import Admin from './components/Admin';
 import LeaveRequest from './components/LeaveRequest';
 import LeaveApproval from './components/LeaveApproval';
 import Ebooks from './components/Ebooks';
+import Attendance from './components/Attendance';
+import AttendanceManagement from './components/AttendanceManagement';
 
 const PrivateRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -76,8 +78,10 @@ function App() {
             <Route path="rules" element={<Rules />} />
             <Route path="leaves" element={<LeaveRequest />} />
             <Route path="ebooks" element={<Ebooks />} />
+            <Route path="attendance" element={<Attendance />} />
             <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="admin/leave-approval" element={<AdminRoute><LeaveApproval /></AdminRoute>} />
+            <Route path="admin/attendance" element={<AdminRoute><AttendanceManagement /></AdminRoute>} />
           </Route>
         </Routes>
       </AuthProvider>

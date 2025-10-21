@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User, Rule, AuthResponse, PointLog, PointRequest, Leave, Ebook } from '../types';
+import { User, Rule, AuthResponse, PointLog, PointRequest, Leave, Ebook, Attendance } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -119,6 +119,42 @@ export const ebookAPI = {
   delete: (id: number) => api.delete(`/ebooks/${id}`),
   
   getDownloadUrl: (filename: string) => api.get(`/ebooks/download/${encodeURIComponent(filename)}`),
+};
+
+// 点名API
+export const attendanceAPI = {
+  getAll: () => api.get<Attendance[]>('/attendances'),
+  
+  getOne: (id: number) => api.get<Attendance>(`/attendances/${id}`),
+  
+  create: (data: {
+    name: string;
+    description?: string;
+    startTime: string;
+    endTime: string;
+    locationName: string;
+    latitude: number;
+    longitude: number;
+    radius: number;
+    penaltyPoints?: number;
+  }) => api.post('/attendances', data),
+  
+  update: (id: number, data: {
+    name: string;
+    description?: string;
+    startTime: string;
+    endTime: string;
+    locationName: string;
+    latitude: number;
+    longitude: number;
+    radius: number;
+    penaltyPoints?: number;
+  }) => api.put(`/attendances/${id}`, data),
+  
+  delete: (id: number) => api.delete(`/attendances/${id}`),
+  
+  sign: (id: number, latitude: number, longitude: number) =>
+    api.post(`/attendances/${id}/sign`, { latitude, longitude }),
 };
 
 export default api;

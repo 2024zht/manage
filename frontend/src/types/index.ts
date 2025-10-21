@@ -94,3 +94,38 @@ export interface UploadTask {
   endTime?: number;
 }
 
+export interface Attendance {
+  id: number;
+  name: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  locationName: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  penaltyPoints: number;
+  createdBy: number;
+  createdByUsername?: string;
+  createdAt: string;
+  notificationSent: boolean;
+  completed: boolean;
+  signedCount?: number;
+  hasSigned?: boolean;
+  signedAt?: string;
+  mySignedAt?: string;
+  records?: AttendanceRecord[];
+}
+
+export interface AttendanceRecord {
+  id: number;
+  attendanceId: number;
+  userId: number;
+  username: string;
+  name: string;
+  studentId: string;
+  latitude: number;
+  longitude: number;
+  signedAt: string;
+}
+

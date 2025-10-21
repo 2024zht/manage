@@ -6,6 +6,8 @@ import userRoutes from './routes/users';
 import ruleRoutes from './routes/rules';
 import leaveRoutes from './routes/leaves';
 import ebookRoutes from './routes/ebooks';
+import attendanceRoutes from './routes/attendances';
+import { startAttendanceScheduler } from './services/scheduler';
 
 // 加载环境变量
 dotenv.config();
@@ -24,6 +26,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/rules', ruleRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/ebooks', ebookRoutes);
+app.use('/api/attendances', attendanceRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {
@@ -39,5 +42,8 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // 启动点名定时任务调度器
+  startAttendanceScheduler();
 });
 

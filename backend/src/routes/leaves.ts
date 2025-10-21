@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../database/db';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 import { Leave } from '../types';
+import { sendLeaveApplicationNotification, sendLeaveApprovalNotification } from '../services/email';
 
 const router = Router();
 
@@ -15,20 +16,48 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: '所有字段都是必填的' });
     }
 
-    db.run(
-      'INSERT INTO leaves (userId, leaveType, startTime, endTime, duration, reason) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId, leaveType, startTime, endTime, duration, reason],
-      function (err) {
-        if (err) {
-          console.error('Create leave error:', err);
-          return res.status(500).json({ error: '提交请假申请失败' });
+    // 获取用户信息
+    const user = await new Promise<any>((resolve, reject) => {
+      db.get('SELECT name, studentId, email FROM users WHERE id = ?', [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    // 插入请假记录
+    const leaveId = await new Promise<number>((resolve, reject) => {
+      db.run(
+        'INSERT INTO leaves (userId, leaveType, startTime, endTime, duration, reason) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, leaveType, startTime, endTime, duration, reason],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
         }
-        res.status(201).json({ 
-          message: '请假申请已提交',
-          id: this.lastID 
-        });
-      }
-    );
+      );
+    });
+
+    // 发送邮件通知管理员
+    try {
+      await sendLeaveApplicationNotification(
+        user.name,
+        user.studentId,
+        leaveType,
+        startTime,
+        endTime,
+        duration,
+        reason,
+        leaveId
+      );
+      console.log('Leave application email sent to admin');
+    } catch (emailError) {
+      console.error('Failed to send email notification:', emailError);
+      // 邮件发送失败不影响请假申请提交
+    }
+
+    res.status(201).json({ 
+      message: '请假申请已提交',
+      id: leaveId 
+    });
   } catch (error) {
     console.error('Create leave error:', error);
     res.status(500).json({ error: '服务器错误' });
@@ -97,7 +126,7 @@ router.get('/', authenticateToken, requireAdmin, (req: AuthRequest, res: Respons
 });
 
 // 管理员审批请假申请
-router.patch('/:id', authenticateToken, requireAdmin, (req: AuthRequest, res: Response) => {
+router.patch('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { status, rejectReason } = req.body;
@@ -111,20 +140,57 @@ router.patch('/:id', authenticateToken, requireAdmin, (req: AuthRequest, res: Re
       return res.status(400).json({ error: '拒绝时必须提供理由' });
     }
 
-    db.run(
-      'UPDATE leaves SET status = ?, respondedAt = CURRENT_TIMESTAMP, respondedBy = ?, rejectReason = ? WHERE id = ?',
-      [status, adminId, rejectReason || null, id],
-      function (err) {
-        if (err) {
-          console.error('Approve leave error:', err);
-          return res.status(500).json({ error: '审批失败' });
+    // 获取请假申请详情
+    const leave = await new Promise<any>((resolve, reject) => {
+      db.get(
+        `SELECT l.*, u.name, u.email 
+         FROM leaves l 
+         JOIN users u ON l.userId = u.id 
+         WHERE l.id = ?`,
+        [id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
         }
-        if (this.changes === 0) {
-          return res.status(404).json({ error: '请假记录不存在' });
+      );
+    });
+
+    if (!leave) {
+      return res.status(404).json({ error: '请假记录不存在' });
+    }
+
+    // 更新审批状态
+    await new Promise<void>((resolve, reject) => {
+      db.run(
+        'UPDATE leaves SET status = ?, respondedAt = CURRENT_TIMESTAMP, respondedBy = ?, rejectReason = ? WHERE id = ?',
+        [status, adminId, rejectReason || null, id],
+        function (err) {
+          if (err) reject(err);
+          else if (this.changes === 0) reject(new Error('请假记录不存在'));
+          else resolve();
         }
-        res.json({ message: '审批成功' });
-      }
-    );
+      );
+    });
+
+    // 发送审批结果邮件给申请人
+    try {
+      await sendLeaveApprovalNotification(
+        leave.email,
+        leave.name,
+        leave.leaveType,
+        leave.startTime,
+        leave.endTime,
+        leave.reason,
+        status,
+        rejectReason
+      );
+      console.log('Leave approval email sent to applicant');
+    } catch (emailError) {
+      console.error('Failed to send approval email:', emailError);
+      // 邮件发送失败不影响审批操作
+    }
+
+    res.json({ message: '审批成功' });
   } catch (error) {
     console.error('Approve leave error:', error);
     res.status(500).json({ error: '服务器错误' });

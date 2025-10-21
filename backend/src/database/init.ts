@@ -155,6 +155,54 @@ const initDatabase = async () => {
     });
     console.log('Ebooks table created');
 
+    // 创建点名任务表
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS attendances (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          startTime DATETIME NOT NULL,
+          endTime DATETIME NOT NULL,
+          locationName TEXT NOT NULL,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          radius INTEGER NOT NULL,
+          penaltyPoints INTEGER DEFAULT 5,
+          createdBy INTEGER NOT NULL,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          notificationSent INTEGER DEFAULT 0,
+          completed INTEGER DEFAULT 0,
+          FOREIGN KEY (createdBy) REFERENCES users(id)
+        )
+      `, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Attendances table created');
+
+    // 创建签到记录表
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS attendance_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          attendanceId INTEGER NOT NULL,
+          userId INTEGER NOT NULL,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          signedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (attendanceId) REFERENCES attendances(id),
+          FOREIGN KEY (userId) REFERENCES users(id),
+          UNIQUE(attendanceId, userId)
+        )
+      `, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Attendance records table created');
+
     // 检查是否已有规则
     const rulesExist = await new Promise<boolean>((resolve) => {
       db.get('SELECT id FROM rules LIMIT 1', (err, row) => {
