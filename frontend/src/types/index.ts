@@ -86,13 +86,15 @@ export interface Ebook {
 export interface UploadTask {
   id: string;
   file: File;
-  status: 'waiting' | 'uploading' | 'syncing' | 'completed' | 'error';
+  status: 'waiting' | 'uploading' | 'syncing' | 'completed' | 'error' | 'cancelled';
   progress: number; // 0-100
   serverProgress: number; // 上传到服务器的进度 0-100
   cloudProgress: number; // 上传到云端的进度 0-100
   error?: string;
   startTime?: number;
   endTime?: number;
+  cancelTokenSource?: any; // axios CancelTokenSource
+  uploadedFileId?: number; // 已上传文件的ID（用于取消时删除）
 }
 
 export interface Attendance {

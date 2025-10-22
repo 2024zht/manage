@@ -58,6 +58,7 @@ const Ebooks: React.FC = () => {
       serverProgress: 0,
       cloudProgress: 0,
       startTime: Date.now(),
+      cancelTokenSource: axios.CancelToken.source(),
     }));
 
     setUploadTasks((prev) => [...prev, ...newTasks]);
@@ -94,20 +95,30 @@ const Ebooks: React.FC = () => {
 
     const formData = new FormData();
     formData.append('file', task.file);
+    
+    let uploadedFileId: number | undefined;
 
     try {
       // 第一阶段：上传到服务器 (0-70%)
-      const response = await ebookAPI.upload(formData, (progressEvent) => {
-        if (progressEvent.total) {
-          const serverPercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          const overallProgress = Math.round(serverPercent * 0.7); // 服务器占70%
-          
-          updateTask(task.id, {
-            serverProgress: serverPercent,
-            progress: overallProgress,
-          });
-        }
-      });
+      const response = await ebookAPI.upload(
+        formData,
+        (progressEvent) => {
+          if (progressEvent.total) {
+            const serverPercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            const overallProgress = Math.round(serverPercent * 0.7); // 服务器占70%
+            
+            updateTask(task.id, {
+              serverProgress: serverPercent,
+              progress: overallProgress,
+            });
+          }
+        },
+        task.cancelTokenSource
+      );
+
+      // 保存上传文件的ID（用于取消时删除）
+      uploadedFileId = response.data.id;
+      updateTask(task.id, { uploadedFileId });
 
       // 第二阶段：同步到云端 (70-100%)
       const needsB2Sync = response.data.needsB2Sync;
@@ -130,10 +141,27 @@ const Ebooks: React.FC = () => {
       }
 
     } catch (error: any) {
-      updateTask(task.id, {
-        status: 'error',
-        error: error.response?.data?.error || '上传失败',
-      });
+      // 如果是取消请求，标记为已取消
+      if (axios.isCancel(error)) {
+        updateTask(task.id, {
+          status: 'cancelled',
+          error: '上传已取消',
+        });
+        // 如果有文件ID，删除已上传的文件
+        if (uploadedFileId) {
+          try {
+            await ebookAPI.delete(uploadedFileId);
+            console.log('已删除取消上传的文件:', uploadedFileId);
+          } catch (deleteError) {
+            console.error('删除文件失败:', deleteError);
+          }
+        }
+      } else {
+        updateTask(task.id, {
+          status: 'error',
+          error: error.response?.data?.error || '上传失败',
+        });
+      }
     }
   };
 
@@ -173,15 +201,36 @@ const Ebooks: React.FC = () => {
     );
   };
 
-  // 移除任务
-  const removeTask = (taskId: string) => {
-    setUploadTasks((prev) => prev.filter((task) => task.id !== taskId));
+  // 取消并移除任务
+  const removeTask = async (taskId: string) => {
+    const task = uploadTasks.find(t => t.id === taskId);
+    
+    if (task) {
+      // 如果任务正在上传或等待中，取消请求
+      if (task.status === 'uploading' || task.status === 'waiting' || task.status === 'syncing') {
+        task.cancelTokenSource?.cancel('用户取消上传');
+      }
+      
+      // 如果文件已上传到服务器且任务未完成，删除文件
+      // 已完成的任务只移除UI，不删除服务器文件
+      if (task.uploadedFileId && task.status !== 'completed') {
+        try {
+          await ebookAPI.delete(task.uploadedFileId);
+          console.log('已删除取消/失败的文件:', task.uploadedFileId);
+        } catch (error) {
+          console.error('删除文件失败:', error);
+        }
+      }
+    }
+    
+    // 从列表中移除任务
+    setUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
   };
 
   // 清除已完成的任务
   const clearCompletedTasks = () => {
     setUploadTasks((prev) =>
-      prev.filter((task) => task.status !== 'completed' && task.status !== 'error')
+      prev.filter((task) => task.status !== 'completed' && task.status !== 'error' && task.status !== 'cancelled')
     );
   };
 
@@ -435,6 +484,9 @@ const Ebooks: React.FC = () => {
                       {task.status === 'error' && (
                         <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
                       )}
+                      {task.status === 'cancelled' && (
+                        <X className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                      )}
                       
                       <span className="text-sm font-medium text-gray-800 truncate" title={task.file.name}>
                         {task.file.name}
@@ -480,6 +532,9 @@ const Ebooks: React.FC = () => {
                   )}
                   {task.status === 'error' && (
                     <span className="text-red-600">{task.error}</span>
+                  )}
+                  {task.status === 'cancelled' && (
+                    <span className="text-gray-600">{task.error || '已取消'}</span>
                   )}
                 </div>
 
