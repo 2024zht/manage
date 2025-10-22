@@ -8,6 +8,7 @@ export interface User {
   password: string;
   isAdmin: boolean;
   points: number;
+  grade: string;
   createdAt: string;
 }
 

@@ -32,7 +32,9 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       latitude,
       longitude,
       radius,
-      penaltyPoints
+      penaltyPoints,
+      targetGrades,
+      targetUserIds
     } = req.body;
     const createdBy = req.user!.userId;
 
@@ -47,11 +49,15 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       return res.status(400).json({ error: '开始日期不能晚于结束日期' });
     }
 
+    // 处理面向人群，默认为2024级和2025级
+    const grades = targetGrades && targetGrades.length > 0 ? targetGrades : ['2024', '2025'];
+    const userIds = targetUserIds || [];
+
     const attendanceId = await new Promise<number>((resolve, reject) => {
       db.run(
-        `INSERT INTO attendances (name, description, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints, createdBy)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, createdBy],
+        `INSERT INTO attendances (name, description, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints, targetGrades, targetUserIds, createdBy)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, JSON.stringify(grades), JSON.stringify(userIds), createdBy],
         function (err) {
           if (err) reject(err);
           else resolve(this.lastID);
@@ -221,7 +227,9 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       latitude,
       longitude,
       radius,
-      penaltyPoints
+      penaltyPoints,
+      targetGrades,
+      targetUserIds
     } = req.body;
 
     // 验证日期范围
@@ -231,13 +239,18 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       return res.status(400).json({ error: '开始日期不能晚于结束日期' });
     }
 
+    // 处理面向人群
+    const grades = targetGrades && targetGrades.length > 0 ? targetGrades : ['2024', '2025'];
+    const userIds = targetUserIds || [];
+
     await new Promise<void>((resolve, reject) => {
       db.run(
         `UPDATE attendances 
          SET name = ?, description = ?, dateStart = ?, dateEnd = ?, 
-             locationName = ?, latitude = ?, longitude = ?, radius = ?, penaltyPoints = ?
+             locationName = ?, latitude = ?, longitude = ?, radius = ?, penaltyPoints = ?,
+             targetGrades = ?, targetUserIds = ?
          WHERE id = ?`,
-        [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, id],
+        [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, JSON.stringify(grades), JSON.stringify(userIds), id],
         function (err) {
           if (err) reject(err);
           else if (this.changes === 0) reject(new Error('点名任务不存在'));

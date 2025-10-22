@@ -121,15 +121,46 @@ async function checkAndNotifyAttendances() {
 
     for (const trigger of triggers) {
       try {
-        // 获取所有非管理员用户的邮箱
-        const users = await new Promise<any[]>((resolve, reject) => {
-          db.all(
-            'SELECT email FROM users WHERE isAdmin = 0',
-            (err, rows) => {
+        // 获取点名任务的面向人群设置
+        const attendance = await new Promise<any>((resolve, reject) => {
+          db.get(
+            'SELECT targetGrades, targetUserIds FROM attendances WHERE id = ?',
+            [trigger.attendanceId],
+            (err, row) => {
               if (err) reject(err);
-              else resolve(rows || []);
+              else resolve(row);
             }
           );
+        });
+
+        if (!attendance) continue;
+
+        const targetGrades = JSON.parse(attendance.targetGrades || '[]');
+        const targetUserIds = JSON.parse(attendance.targetUserIds || '[]');
+
+        // 构建SQL查询条件
+        let sql = 'SELECT email FROM users WHERE isAdmin = 0';
+        const params: any[] = [];
+
+        if (targetUserIds.length > 0 && targetGrades.length > 0) {
+          // 如果同时指定了年级和人员，取并集
+          sql += ' AND (grade IN (' + targetGrades.map(() => '?').join(',') + ') OR id IN (' + targetUserIds.map(() => '?').join(',') + '))';
+          params.push(...targetGrades, ...targetUserIds);
+        } else if (targetUserIds.length > 0) {
+          // 只指定了人员
+          sql += ' AND id IN (' + targetUserIds.map(() => '?').join(',') + ')';
+          params.push(...targetUserIds);
+        } else if (targetGrades.length > 0) {
+          // 只指定了年级
+          sql += ' AND grade IN (' + targetGrades.map(() => '?').join(',') + ')';
+          params.push(...targetGrades);
+        }
+
+        const users = await new Promise<any[]>((resolve, reject) => {
+          db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
         });
 
         const userEmails = users.map(u => u.email);
@@ -217,15 +248,43 @@ async function checkAndCompleteAttendances() {
           continue;
         }
 
-        // 获取所有非管理员用户
-        const allUsers = await new Promise<any[]>((resolve, reject) => {
-          db.all(
-            'SELECT id, username, name FROM users WHERE isAdmin = 0',
-            (err, rows) => {
+        // 获取点名任务的面向人群设置
+        const attendance = await new Promise<any>((resolve, reject) => {
+          db.get(
+            'SELECT targetGrades, targetUserIds FROM attendances WHERE id = ?',
+            [trigger.attendanceId],
+            (err, row) => {
               if (err) reject(err);
-              else resolve(rows || []);
+              else resolve(row);
             }
           );
+        });
+
+        if (!attendance) continue;
+
+        const targetGrades = JSON.parse(attendance.targetGrades || '[]');
+        const targetUserIds = JSON.parse(attendance.targetUserIds || '[]');
+
+        // 构建SQL查询条件，获取目标用户
+        let sql = 'SELECT id, username, name FROM users WHERE isAdmin = 0';
+        const params: any[] = [];
+
+        if (targetUserIds.length > 0 && targetGrades.length > 0) {
+          sql += ' AND (grade IN (' + targetGrades.map(() => '?').join(',') + ') OR id IN (' + targetUserIds.map(() => '?').join(',') + '))';
+          params.push(...targetGrades, ...targetUserIds);
+        } else if (targetUserIds.length > 0) {
+          sql += ' AND id IN (' + targetUserIds.map(() => '?').join(',') + ')';
+          params.push(...targetUserIds);
+        } else if (targetGrades.length > 0) {
+          sql += ' AND grade IN (' + targetGrades.map(() => '?').join(',') + ')';
+          params.push(...targetGrades);
+        }
+
+        const allUsers = await new Promise<any[]>((resolve, reject) => {
+          db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
         });
 
         // 获取已签到的用户

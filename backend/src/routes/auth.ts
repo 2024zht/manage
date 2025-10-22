@@ -13,6 +13,7 @@ router.post('/register',
   body('name').trim().notEmpty().withMessage('姓名不能为空'),
   body('studentId').trim().notEmpty().withMessage('学号不能为空'),
   body('className').trim().notEmpty().withMessage('班级不能为空'),
+  body('grade').trim().notEmpty().withMessage('年级不能为空'),
   body('email').isEmail().withMessage('邮箱格式不正确'),
   body('password').isLength({ min: 6 }).withMessage('密码长度至少为6个字符'),
   async (req: Request, res: Response) => {
@@ -21,7 +22,7 @@ router.post('/register',
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { username, name, studentId, className, email, password } = req.body;
+    const { username, name, studentId, className, grade, email, password } = req.body;
 
     try {
       // 检查用户名、学号或邮箱是否已存在
@@ -39,8 +40,8 @@ router.post('/register',
 
       // 创建用户
       await runQuery(
-        'INSERT INTO users (username, name, studentId, className, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [username, name, studentId, className, email, hashedPassword, 0, 0]
+        'INSERT INTO users (username, name, studentId, className, grade, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [username, name, studentId, className, grade, email, hashedPassword, 0, 0]
       );
 
       res.status(201).json({ message: '注册成功' });
@@ -97,6 +98,7 @@ router.post('/login',
           name: user.name,
           studentId: user.studentId,
           className: user.className,
+          grade: user.grade,
           email: user.email,
           isAdmin: Boolean(user.isAdmin),
           points: user.points

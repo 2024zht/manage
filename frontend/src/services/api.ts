@@ -32,8 +32,8 @@ api.interceptors.response.use(
 
 // 认证API
 export const authAPI = {
-  register: (username: string, name: string, studentId: string, className: string, email: string, password: string) =>
-    api.post('/auth/register', { username, name, studentId, className, email, password }),
+  register: (username: string, name: string, studentId: string, className: string, grade: string, email: string, password: string) =>
+    api.post('/auth/register', { username, name, studentId, className, grade, email, password }),
   
   login: (username: string, password: string) =>
     api.post<AuthResponse>('/auth/login', { username, password }),
@@ -137,6 +137,8 @@ export const attendanceAPI = {
     longitude: number;
     radius: number;
     penaltyPoints?: number;
+    targetGrades?: string[];
+    targetUserIds?: number[];
   }) => api.post('/attendances', data),
   
   update: (id: number, data: {
@@ -149,6 +151,8 @@ export const attendanceAPI = {
     longitude: number;
     radius: number;
     penaltyPoints?: number;
+    targetGrades?: string[];
+    targetUserIds?: number[];
   }) => api.put(`/attendances/${id}`, data),
   
   delete: (id: number) => api.delete(`/attendances/${id}`),

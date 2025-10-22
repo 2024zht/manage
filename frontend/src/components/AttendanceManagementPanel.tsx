@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { attendanceAPI } from '../services/api';
-import { Plus, Edit, Trash2, Calendar, MapPin, Clock } from 'lucide-react';
+import { attendanceAPI, userAPI } from '../services/api';
+import { Plus, Edit, Trash2, Calendar, MapPin, Clock, Users as UsersIcon } from 'lucide-react';
+import { User } from '../types';
 
 interface Attendance {
   id: number;
@@ -13,6 +14,8 @@ interface Attendance {
   longitude: number;
   radius: number;
   penaltyPoints: number;
+  targetGrades: string[];
+  targetUserIds: number[];
   createdBy: number;
   createdByUsername?: string;
   createdAt: string;
@@ -23,6 +26,7 @@ interface Attendance {
 
 const AttendanceManagementPanel: React.FC = () => {
   const [attendances, setAttendances] = useState<Attendance[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -36,19 +40,25 @@ const AttendanceManagementPanel: React.FC = () => {
     longitude: 116.83040694925626,  // 默认经度
     radius: 200,
     penaltyPoints: 5,
+    targetGrades: ['2024', '2025'] as string[],  // 默认面向2024和2025级
+    targetUserIds: [] as number[],
   });
 
   useEffect(() => {
-    fetchAttendances();
+    fetchData();
   }, []);
 
-  const fetchAttendances = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await attendanceAPI.getAll();
-      setAttendances(response.data);
+      const [attendanceRes, usersRes] = await Promise.all([
+        attendanceAPI.getAll(),
+        userAPI.getAll()
+      ]);
+      setAttendances(attendanceRes.data);
+      setUsers(usersRes.data.filter(u => !u.isAdmin));
     } catch (error) {
-      console.error('获取点名列表失败:', error);
+      console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
     }
@@ -67,7 +77,7 @@ const AttendanceManagementPanel: React.FC = () => {
       setShowForm(false);
       setEditingId(null);
       resetForm();
-      fetchAttendances();
+      fetchData();
     } catch (error: any) {
       console.error('保存点名任务失败:', error);
       alert(error.response?.data?.error || '操作失败');
@@ -85,6 +95,8 @@ const AttendanceManagementPanel: React.FC = () => {
       longitude: attendance.longitude,
       radius: attendance.radius,
       penaltyPoints: attendance.penaltyPoints,
+      targetGrades: attendance.targetGrades || ['2024', '2025'],
+      targetUserIds: attendance.targetUserIds || [],
     });
     setEditingId(attendance.id);
     setShowForm(true);
@@ -96,7 +108,7 @@ const AttendanceManagementPanel: React.FC = () => {
     try {
       await attendanceAPI.delete(id);
       alert('删除成功');
-      fetchAttendances();
+      fetchData();
     } catch (error) {
       console.error('删除失败:', error);
       alert('删除失败');
@@ -114,7 +126,27 @@ const AttendanceManagementPanel: React.FC = () => {
       longitude: 116.83040694925626,
       radius: 200,
       penaltyPoints: 5,
+      targetGrades: ['2024', '2025'],
+      targetUserIds: [],
     });
+  };
+
+  const handleGradeToggle = (grade: string) => {
+    setFormData(prev => ({
+      ...prev,
+      targetGrades: prev.targetGrades.includes(grade)
+        ? prev.targetGrades.filter(g => g !== grade)
+        : [...prev.targetGrades, grade]
+    }));
+  };
+
+  const handleUserToggle = (userId: number) => {
+    setFormData(prev => ({
+      ...prev,
+      targetUserIds: prev.targetUserIds.includes(userId)
+        ? prev.targetUserIds.filter(id => id !== userId)
+        : [...prev.targetUserIds, userId]
+    }));
   };
 
   const getStatusText = (attendance: Attendance) => {
@@ -298,6 +330,78 @@ const AttendanceManagementPanel: React.FC = () => {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
+                </div>
+              </div>
+
+              {/* 面向人群选择 */}
+              <div className="border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  <UsersIcon className="inline h-4 w-4 mr-1" />
+                  面向人群
+                </label>
+                
+                {/* 年级选择 */}
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-2">按年级（默认：2024级和2025级）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['2023', '2024', '2025', '2026'].map(grade => (
+                      <label
+                        key={grade}
+                        className={`flex items-center px-4 py-2 border rounded-lg cursor-pointer transition ${
+                          formData.targetGrades.includes(grade)
+                            ? 'bg-blue-100 border-blue-500 text-blue-700'
+                            : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.targetGrades.includes(grade)}
+                          onChange={() => handleGradeToggle(grade)}
+                          className="mr-2"
+                        />
+                        {grade}级
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 指定人员选择 */}
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">或指定人员（可选，与年级取并集）</p>
+                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3 bg-gray-50">
+                    {users.length === 0 ? (
+                      <p className="text-sm text-gray-500">暂无可选用户</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {users.map(user => (
+                          <label
+                            key={user.id}
+                            className={`flex items-center px-3 py-2 border rounded cursor-pointer transition text-sm ${
+                              formData.targetUserIds.includes(user.id)
+                                ? 'bg-blue-50 border-blue-400 text-blue-700'
+                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.targetUserIds.includes(user.id)}
+                              onChange={() => handleUserToggle(user.id)}
+                              className="mr-2"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">{user.name}</div>
+                              <div className="text-xs text-gray-500 truncate">
+                                {user.studentId} ({user.grade}级)
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    已选 {formData.targetUserIds.length} 人
+                  </p>
                 </div>
               </div>
 

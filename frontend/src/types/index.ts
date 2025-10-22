@@ -4,6 +4,7 @@ export interface User {
   name: string;
   studentId: string;
   className: string;
+  grade: string;
   email: string;
   isAdmin: boolean;
   points: number;
@@ -105,6 +106,8 @@ export interface Attendance {
   longitude: number;
   radius: number;
   penaltyPoints: number;
+  targetGrades: string[];
+  targetUserIds: number[];
   createdBy: number;
   createdByUsername?: string;
   createdAt: string;
