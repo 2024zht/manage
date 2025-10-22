@@ -228,6 +228,56 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('file'), a
   }
 });
 
+// 清理孤儿文件（管理员）- 删除文件系统中存在但数据库中没有记录的文件
+router.post('/cleanup-orphans', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'ebooks');
+    
+    // 确保目录存在
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({ message: '上传目录不存在', deletedCount: 0, deletedFiles: [] });
+    }
+
+    // 获取数据库中所有的文件名
+    const dbFiles = await new Promise<any[]>((resolve, reject) => {
+      db.all('SELECT filename FROM ebooks', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    const dbFilenames = new Set(dbFiles.map(f => f.filename));
+
+    // 获取文件系统中的所有文件
+    const fsFiles = fs.readdirSync(uploadsDir);
+
+    // 找出孤儿文件（在文件系统中但不在数据库中）
+    const orphanFiles = fsFiles.filter(file => !dbFilenames.has(file));
+
+    // 删除孤儿文件
+    const deletedFiles: string[] = [];
+    for (const file of orphanFiles) {
+      try {
+        const filePath = path.join(uploadsDir, file);
+        fs.unlinkSync(filePath);
+        deletedFiles.push(file);
+        console.log('Deleted orphan file:', file);
+      } catch (error) {
+        console.error('Failed to delete orphan file:', file, error);
+      }
+    }
+
+    res.json({
+      message: `清理完成，删除了 ${deletedFiles.length} 个孤儿文件`,
+      deletedCount: deletedFiles.length,
+      deletedFiles: deletedFiles
+    });
+  } catch (error) {
+    console.error('Cleanup orphans error:', error);
+    res.status(500).json({ error: '清理失败' });
+  }
+});
+
 // 删除电子书（管理员）
 router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {

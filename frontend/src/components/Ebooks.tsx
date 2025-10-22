@@ -44,6 +44,22 @@ const Ebooks: React.FC = () => {
     }
   };
 
+  // 清理孤儿文件
+  const handleCleanupOrphans = async () => {
+    if (!window.confirm('确定要清理所有孤儿文件吗？这将删除文件系统中存在但数据库中没有记录的文件（通常是上传失败或取消上传留下的文件）。')) {
+      return;
+    }
+
+    try {
+      const response = await ebookAPI.cleanupOrphans();
+      alert(`${response.data.message}\n删除的文件：\n${response.data.deletedFiles.join('\n')}`);
+      fetchEbooks();
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      alert('清理失败');
+    }
+  };
+
   // 处理文件选择（支持多文件）
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -58,6 +74,7 @@ const Ebooks: React.FC = () => {
       serverProgress: 0,
       cloudProgress: 0,
       startTime: Date.now(),
+      cancelTokenSource: axios.CancelToken.source(),
     }));
 
     setUploadTasks((prev) => [...prev, ...newTasks]);
@@ -94,20 +111,30 @@ const Ebooks: React.FC = () => {
 
     const formData = new FormData();
     formData.append('file', task.file);
+    
+    let uploadedFileId: number | undefined;
 
     try {
       // 第一阶段：上传到服务器 (0-70%)
-      const response = await ebookAPI.upload(formData, (progressEvent) => {
-        if (progressEvent.total) {
-          const serverPercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          const overallProgress = Math.round(serverPercent * 0.7); // 服务器占70%
-          
-          updateTask(task.id, {
-            serverProgress: serverPercent,
-            progress: overallProgress,
-          });
-        }
-      });
+      const response = await ebookAPI.upload(
+        formData,
+        (progressEvent) => {
+          if (progressEvent.total) {
+            const serverPercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            const overallProgress = Math.round(serverPercent * 0.7); // 服务器占70%
+            
+            updateTask(task.id, {
+              serverProgress: serverPercent,
+              progress: overallProgress,
+            });
+          }
+        },
+        task.cancelTokenSource
+      );
+
+      // 保存上传文件的ID（用于取消时删除）
+      uploadedFileId = response.data.id;
+      updateTask(task.id, { uploadedFileId });
 
       // 第二阶段：同步到云端 (70-100%)
       const needsB2Sync = response.data.needsB2Sync;
@@ -130,10 +157,31 @@ const Ebooks: React.FC = () => {
       }
 
     } catch (error: any) {
-      updateTask(task.id, {
-        status: 'error',
-        error: error.response?.data?.error || '上传失败',
-      });
+      // 如果是取消请求，标记为已取消
+      if (axios.isCancel(error)) {
+        updateTask(task.id, {
+          status: 'cancelled',
+          error: '上传已取消',
+          uploadedFileId, // 保存文件ID以便后续删除
+        });
+        // 如果有文件ID，删除已上传的文件
+        if (uploadedFileId) {
+          try {
+            await ebookAPI.delete(uploadedFileId);
+            console.log('已删除取消上传的文件:', uploadedFileId);
+            // 刷新书籍列表
+            fetchEbooks();
+          } catch (deleteError) {
+            console.error('删除文件失败:', deleteError);
+          }
+        }
+      } else {
+        updateTask(task.id, {
+          status: 'error',
+          error: error.response?.data?.error || '上传失败',
+          uploadedFileId, // 保存文件ID以便后续删除
+        });
+      }
     }
   };
 
@@ -173,16 +221,83 @@ const Ebooks: React.FC = () => {
     );
   };
 
-  // 移除任务
-  const removeTask = (taskId: string) => {
-    setUploadTasks((prev) => prev.filter((task) => task.id !== taskId));
+  // 取消并移除任务
+  const removeTask = async (taskId: string) => {
+    const task = uploadTasks.find(t => t.id === taskId);
+    
+    if (task) {
+      // 如果任务正在上传或等待中，取消请求
+      if (task.status === 'uploading' || task.status === 'waiting' || task.status === 'syncing') {
+        task.cancelTokenSource?.cancel('用户取消上传');
+        
+        // 等待一小段时间确保取消完成
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // 如果文件已上传到服务器且任务未完成，删除文件
+      // 已完成的任务只移除UI，不删除服务器文件
+      if (task.uploadedFileId && task.status !== 'completed') {
+        try {
+          await ebookAPI.delete(task.uploadedFileId);
+          console.log('已删除取消/失败的文件:', task.uploadedFileId);
+          // 刷新书籍列表
+          await fetchEbooks();
+        } catch (error) {
+          console.error('删除文件失败:', error);
+          alert('删除文件失败，请手动刷新页面');
+        }
+      }
+    }
+    
+    // 从列表中移除任务
+    setUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
   };
 
   // 清除已完成的任务
   const clearCompletedTasks = () => {
     setUploadTasks((prev) =>
-      prev.filter((task) => task.status !== 'completed' && task.status !== 'error')
+      prev.filter((task) => task.status !== 'completed' && task.status !== 'error' && task.status !== 'cancelled')
     );
+  };
+
+  // 清除失败和取消的任务（包括删除服务器文件）
+  const clearFailedTasks = async () => {
+    const failedTasks = uploadTasks.filter(
+      task => (task.status === 'error' || task.status === 'cancelled') && task.uploadedFileId
+    );
+    
+    if (failedTasks.length === 0) {
+      alert('没有需要清理的失败任务');
+      return;
+    }
+    
+    if (!window.confirm(`确定要删除 ${failedTasks.length} 个失败/取消的文件吗？`)) {
+      return;
+    }
+    
+    // 删除所有失败任务的服务器文件
+    const deletePromises = failedTasks.map(async (task) => {
+      if (task.uploadedFileId) {
+        try {
+          await ebookAPI.delete(task.uploadedFileId);
+          console.log('已删除文件:', task.uploadedFileId);
+        } catch (error) {
+          console.error('删除文件失败:', task.uploadedFileId, error);
+        }
+      }
+    });
+    
+    await Promise.all(deletePromises);
+    
+    // 从UI中移除这些任务
+    setUploadTasks((prev) =>
+      prev.filter((task) => task.status !== 'error' && task.status !== 'cancelled')
+    );
+    
+    // 刷新书籍列表
+    await fetchEbooks();
+    
+    alert('清理完成');
   };
 
 
@@ -411,6 +526,15 @@ const Ebooks: React.FC = () => {
               >
                 清除已完成
               </button>
+              {uploadTasks.some(task => (task.status === 'error' || task.status === 'cancelled') && task.uploadedFileId) && (
+                <button
+                  onClick={clearFailedTasks}
+                  className="text-xs px-2 py-1 bg-red-500 bg-opacity-80 rounded hover:bg-opacity-100 transition"
+                  title="删除失败/取消任务的服务器文件"
+                >
+                  清理失败文件
+                </button>
+              )}
             </div>
           </div>
 
@@ -434,6 +558,9 @@ const Ebooks: React.FC = () => {
                       )}
                       {task.status === 'error' && (
                         <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                      )}
+                      {task.status === 'cancelled' && (
+                        <X className="h-4 w-4 text-gray-500 flex-shrink-0" />
                       )}
                       
                       <span className="text-sm font-medium text-gray-800 truncate" title={task.file.name}>
@@ -480,6 +607,9 @@ const Ebooks: React.FC = () => {
                   )}
                   {task.status === 'error' && (
                     <span className="text-red-600">{task.error}</span>
+                  )}
+                  {task.status === 'cancelled' && (
+                    <span className="text-gray-600">{task.error || '已取消'}</span>
                   )}
                 </div>
 
@@ -546,7 +676,7 @@ const Ebooks: React.FC = () => {
         </h2>
         
         {user?.isAdmin && (
-          <div>
+          <div className="flex gap-2">
             <input
               type="file"
               id="fileInput"
@@ -562,6 +692,14 @@ const Ebooks: React.FC = () => {
               <Upload className="h-5 w-5 mr-2" />
               上传电子书
             </label>
+            <button
+              onClick={handleCleanupOrphans}
+              className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
+              title="清理上传失败或取消上传留下的孤儿文件"
+            >
+              <Trash2 className="h-5 w-5 mr-2" />
+              清理损坏文件
+            </button>
           </div>
         )}
       </div>

@@ -108,15 +108,18 @@ export const leaveAPI = {
 export const ebookAPI = {
   getAll: () => api.get<Ebook[]>('/ebooks'),
   
-  upload: (formData: FormData, onUploadProgress?: (progressEvent: any) => void) =>
+  upload: (formData: FormData, onUploadProgress?: (progressEvent: any) => void, cancelTokenSource?: any) =>
     api.post('/ebooks/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       onUploadProgress,
+      cancelToken: cancelTokenSource?.token,
     }),
   
   delete: (id: number) => api.delete(`/ebooks/${id}`),
+  
+  cleanupOrphans: () => api.post<{message: string; deletedCount: number; deletedFiles: string[]}>('/ebooks/cleanup-orphans'),
   
   getDownloadUrl: (filename: string) => api.get(`/ebooks/download/${encodeURIComponent(filename)}`),
 };
