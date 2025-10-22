@@ -162,15 +162,19 @@ const Ebooks: React.FC = () => {
         updateTask(task.id, {
           status: 'cancelled',
           error: '上传已取消',
+
           uploadedFileId, // 保存文件ID以便后续删除
+
         });
         // 如果有文件ID，删除已上传的文件
         if (uploadedFileId) {
           try {
             await ebookAPI.delete(uploadedFileId);
             console.log('已删除取消上传的文件:', uploadedFileId);
+
             // 刷新书籍列表
             fetchEbooks();
+
           } catch (deleteError) {
             console.error('删除文件失败:', deleteError);
           }
@@ -179,7 +183,9 @@ const Ebooks: React.FC = () => {
         updateTask(task.id, {
           status: 'error',
           error: error.response?.data?.error || '上传失败',
+
           uploadedFileId, // 保存文件ID以便后续删除
+
         });
       }
     }
@@ -229,9 +235,11 @@ const Ebooks: React.FC = () => {
       // 如果任务正在上传或等待中，取消请求
       if (task.status === 'uploading' || task.status === 'waiting' || task.status === 'syncing') {
         task.cancelTokenSource?.cancel('用户取消上传');
+
         
         // 等待一小段时间确保取消完成
         await new Promise(resolve => setTimeout(resolve, 100));
+
       }
       
       // 如果文件已上传到服务器且任务未完成，删除文件
@@ -240,6 +248,7 @@ const Ebooks: React.FC = () => {
         try {
           await ebookAPI.delete(task.uploadedFileId);
           console.log('已删除取消/失败的文件:', task.uploadedFileId);
+
           // 刷新书籍列表
           await fetchEbooks();
         } catch (error) {
