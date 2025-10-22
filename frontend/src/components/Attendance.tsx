@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { attendanceAPI } from '../services/api';
-import { Attendance } from '../types';
+import { Attendance, DailyAttendanceTrigger } from '../types';
 import { MapPin, Clock, CheckCircle, XCircle, Calendar, AlertCircle, Navigation } from 'lucide-react';
 
 const AttendancePage: React.FC = () => {
@@ -25,7 +25,7 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  const handleSign = async (attendanceId: number) => {
+  const handleSign = async (triggerId: number) => {
     setSigning(true);
     setLocationError('');
 
@@ -41,7 +41,7 @@ const AttendancePage: React.FC = () => {
         async (position) => {
           try {
             const { latitude, longitude } = position.coords;
-            await attendanceAPI.sign(attendanceId, latitude, longitude);
+            await attendanceAPI.sign(triggerId, latitude, longitude);
             alert('签到成功！');
             fetchAttendances();
           } catch (error: any) {
@@ -87,28 +87,33 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (attendance: Attendance) => {
-    const now = new Date();
-    const start = new Date(attendance.startTime);
-    const end = new Date(attendance.endTime);
+  // 获取今天的触发记录
+  const getTodayTrigger = (attendance: Attendance): DailyAttendanceTrigger | null => {
+    if (!attendance.triggers || attendance.triggers.length === 0) return null;
+    const today = new Date().toISOString().split('T')[0];
+    return attendance.triggers.find(t => t.triggerDate === today) || null;
+  };
 
-    if (attendance.hasSigned) {
+  const getStatusBadge = (trigger: DailyAttendanceTrigger | null) => {
+    if (!trigger) {
+      return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">未触发</span>;
+    }
+
+    if (trigger.hasSigned) {
       return (
         <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
           <CheckCircle className="h-3 w-3 mr-1" />
           已签到
         </span>
       );
-    } else if (attendance.completed) {
+    } else if (trigger.completed) {
       return (
         <span className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
           <XCircle className="h-3 w-3 mr-1" />
           已结束
         </span>
       );
-    } else if (now < start) {
-      return <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">未开始</span>;
-    } else if (now >= start && now <= end) {
+    } else if (trigger.notificationSent) {
       return (
         <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded font-medium">
           <Clock className="h-3 w-3 mr-1" />
@@ -116,15 +121,13 @@ const AttendancePage: React.FC = () => {
         </span>
       );
     } else {
-      return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">待处理</span>;
+      return <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">未开始</span>;
     }
   };
 
-  const canSign = (attendance: Attendance) => {
-    const now = new Date();
-    const start = new Date(attendance.startTime);
-    const end = new Date(attendance.endTime);
-    return !attendance.hasSigned && !attendance.completed && now >= start && now <= end;
+  const canSign = (trigger: DailyAttendanceTrigger | null) => {
+    if (!trigger) return false;
+    return !trigger.hasSigned && !trigger.completed && trigger.notificationSent;
   };
 
   if (loading) {
@@ -155,88 +158,98 @@ const AttendancePage: React.FC = () => {
             暂无点名任务
           </div>
         ) : (
-          attendances.map((attendance) => (
-            <div
-              key={attendance.id}
-              className={`bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition ${
-                attendance.hasSigned ? 'border-2 border-green-200' : ''
-              }`}
-            >
-              <div className="flex justify-between items-start mb-3">
-                <h3 className="font-semibold text-lg text-gray-800">{attendance.name}</h3>
-                {getStatusBadge(attendance)}
-              </div>
+          attendances.map((attendance) => {
+            const todayTrigger = getTodayTrigger(attendance);
+            const today = new Date().toISOString().split('T')[0];
+            const isActive = attendance.dateStart <= today && attendance.dateEnd >= today;
 
-              {attendance.description && (
-                <p className="text-sm text-gray-600 mb-3">{attendance.description}</p>
-              )}
+            return (
+              <div
+                key={attendance.id}
+                className={`bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition ${
+                  todayTrigger?.hasSigned ? 'border-2 border-green-200' : ''
+                }`}
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="font-semibold text-lg text-gray-800">{attendance.name}</h3>
+                  {getStatusBadge(todayTrigger)}
+                </div>
 
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center">
-                  <Calendar className="h-4 w-4 mr-2 text-blue-600" />
-                  开始：{new Date(attendance.startTime).toLocaleString('zh-CN', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </div>
-                <div className="flex items-center">
-                  <Clock className="h-4 w-4 mr-2 text-red-600" />
-                  截止：{new Date(attendance.endTime).toLocaleString('zh-CN', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </div>
-                <div className="flex items-center">
-                  <MapPin className="h-4 w-4 mr-2 text-green-600" />
-                  {attendance.locationName}
-                </div>
-                <div className="text-xs text-gray-500">
-                  要求：距离指定地点 {attendance.radius} 米内
-                </div>
-              </div>
+                {attendance.description && (
+                  <p className="text-sm text-gray-600 mb-3">{attendance.description}</p>
+                )}
 
-              {attendance.hasSigned && attendance.signedAt && (
-                <div className="mt-3 p-2 bg-green-50 rounded text-xs text-green-700">
-                  签到时间：{new Date(attendance.signedAt).toLocaleString('zh-CN')}
-                </div>
-              )}
-
-              <div className="mt-4 pt-4 border-t">
-                {canSign(attendance) ? (
-                  <button
-                    onClick={() => handleSign(attendance.id)}
-                    disabled={signing}
-                    className="w-full inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    <Navigation className="h-4 w-4 mr-2" />
-                    {signing ? '定位中...' : '立即签到'}
-                  </button>
-                ) : attendance.hasSigned ? (
-                  <div className="text-center text-sm text-green-600 font-medium">
-                    ✓ 您已完成签到
+                <div className="space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center">
+                    <Calendar className="h-4 w-4 mr-2 text-blue-600" />
+                    任务期间：{attendance.dateStart} 至 {attendance.dateEnd}
                   </div>
-                ) : attendance.completed ? (
-                  <div className="text-center text-sm text-gray-500">
-                    点名已结束
+                  {todayTrigger && (
+                    <div className="flex items-center">
+                      <Clock className="h-4 w-4 mr-2 text-orange-600" />
+                      今日触发时间：{todayTrigger.triggerTime}（1分钟内签到）
+                    </div>
+                  )}
+                  <div className="flex items-center">
+                    <MapPin className="h-4 w-4 mr-2 text-green-600" />
+                    {attendance.locationName}
                   </div>
-                ) : (
-                  <div className="text-center text-sm text-gray-500">
-                    签到尚未开始
+                  <div className="text-xs text-gray-500">
+                    要求：距离指定地点 {attendance.radius} 米内
+                  </div>
+                </div>
+
+                {todayTrigger?.hasSigned && todayTrigger.signedAt && (
+                  <div className="mt-3 p-2 bg-green-50 rounded text-xs text-green-700">
+                    签到时间：{new Date(todayTrigger.signedAt).toLocaleString('zh-CN')}
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t">
+                  {canSign(todayTrigger) && todayTrigger ? (
+                    <button
+                      onClick={() => handleSign(todayTrigger.id)}
+                      disabled={signing}
+                      className="w-full inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      <Navigation className="h-4 w-4 mr-2" />
+                      {signing ? '定位中...' : '立即签到'}
+                    </button>
+                  ) : todayTrigger?.hasSigned ? (
+                    <div className="text-center text-sm text-green-600 font-medium">
+                      ✓ 今日已完成签到
+                    </div>
+                  ) : todayTrigger?.completed ? (
+                    <div className="text-center text-sm text-gray-500">
+                      今日点名已结束
+                    </div>
+                  ) : isActive ? (
+                    <div className="text-center text-sm text-gray-500">
+                      今日签到尚未开始（晚上9:15-9:25随机触发）
+                    </div>
+                  ) : (
+                    <div className="text-center text-sm text-gray-500">
+                      任务不在有效期内
+                    </div>
+                  )}
+                </div>
+
+                {todayTrigger && !todayTrigger.hasSigned && !todayTrigger.completed && (
+                  <div className="mt-2 text-xs text-orange-600 text-center">
+                    未签到将扣除 {attendance.penaltyPoints} 分
+                  </div>
+                )}
+
+                {/* 显示历史记录摘要 */}
+                {attendance.triggers && attendance.triggers.length > 0 && (
+                  <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                    已触发 {attendance.totalTriggers || attendance.triggers.length} 次，
+                    已签到 {attendance.triggers.filter(t => t.hasSigned).length} 次
                   </div>
                 )}
               </div>
-
-              {!attendance.hasSigned && !attendance.completed && (
-                <div className="mt-2 text-xs text-orange-600 text-center">
-                  未签到将扣除 {attendance.penaltyPoints} 分
-                </div>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

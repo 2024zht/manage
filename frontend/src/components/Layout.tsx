@@ -25,7 +25,6 @@ const Layout: React.FC = () => {
     ...(user?.isAdmin ? [
       { name: '管理面板', path: '/admin', icon: Settings },
       { name: '请假审批', path: '/admin/leave-approval', icon: CheckCircle },
-      { name: '点名管理', path: '/admin/attendance', icon: MapPin },
     ] : []),
   ];
 

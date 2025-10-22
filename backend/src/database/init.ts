@@ -155,15 +155,15 @@ const initDatabase = async () => {
     });
     console.log('Ebooks table created');
 
-    // 创建点名任务表
+    // 创建点名任务表（支持日期范围，每天晚上9:15-9:25随机时间触发）
     await new Promise<void>((resolve, reject) => {
       db.run(`
         CREATE TABLE IF NOT EXISTS attendances (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
           description TEXT,
-          startTime DATETIME NOT NULL,
-          endTime DATETIME NOT NULL,
+          dateStart TEXT NOT NULL,
+          dateEnd TEXT NOT NULL,
           locationName TEXT NOT NULL,
           latitude REAL NOT NULL,
           longitude REAL NOT NULL,
@@ -171,7 +171,6 @@ const initDatabase = async () => {
           penaltyPoints INTEGER DEFAULT 5,
           createdBy INTEGER NOT NULL,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-          notificationSent INTEGER DEFAULT 0,
           completed INTEGER DEFAULT 0,
           FOREIGN KEY (createdBy) REFERENCES users(id)
         )
@@ -182,19 +181,40 @@ const initDatabase = async () => {
     });
     console.log('Attendances table created');
 
+    // 创建每日点名触发记录表
+    await new Promise<void>((resolve, reject) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS daily_attendance_triggers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          attendanceId INTEGER NOT NULL,
+          triggerDate TEXT NOT NULL,
+          triggerTime TEXT NOT NULL,
+          notificationSent INTEGER DEFAULT 0,
+          completed INTEGER DEFAULT 0,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (attendanceId) REFERENCES attendances(id),
+          UNIQUE(attendanceId, triggerDate)
+        )
+      `, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Daily attendance triggers table created');
+
     // 创建签到记录表
     await new Promise<void>((resolve, reject) => {
       db.run(`
         CREATE TABLE IF NOT EXISTS attendance_records (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          attendanceId INTEGER NOT NULL,
+          triggerId INTEGER NOT NULL,
           userId INTEGER NOT NULL,
           latitude REAL NOT NULL,
           longitude REAL NOT NULL,
           signedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (attendanceId) REFERENCES attendances(id),
+          FOREIGN KEY (triggerId) REFERENCES daily_attendance_triggers(id),
           FOREIGN KEY (userId) REFERENCES users(id),
-          UNIQUE(attendanceId, userId)
+          UNIQUE(triggerId, userId)
         )
       `, (err) => {
         if (err) reject(err);

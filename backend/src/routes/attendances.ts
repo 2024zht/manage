@@ -20,14 +20,14 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; // 距离（米）
 }
 
-// 创建点名任务（管理员）
+// 创建点名任务（管理员）- 支持日期范围，每天晚上9:15-9:25随机时间触发
 router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const {
       name,
       description,
-      startTime,
-      endTime,
+      dateStart,
+      dateEnd,
       locationName,
       latitude,
       longitude,
@@ -36,15 +36,22 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
     } = req.body;
     const createdBy = req.user!.userId;
 
-    if (!name || !startTime || !endTime || !locationName || latitude === undefined || longitude === undefined || !radius) {
+    if (!name || !dateStart || !dateEnd || !locationName || latitude === undefined || longitude === undefined || !radius) {
       return res.status(400).json({ error: '所有字段都是必填的' });
+    }
+
+    // 验证日期范围
+    const start = new Date(dateStart);
+    const end = new Date(dateEnd);
+    if (start > end) {
+      return res.status(400).json({ error: '开始日期不能晚于结束日期' });
     }
 
     const attendanceId = await new Promise<number>((resolve, reject) => {
       db.run(
-        `INSERT INTO attendances (name, description, startTime, endTime, locationName, latitude, longitude, radius, penaltyPoints, createdBy)
+        `INSERT INTO attendances (name, description, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints, createdBy)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, description || null, startTime, endTime, locationName, latitude, longitude, radius, penaltyPoints || 5, createdBy],
+        [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, createdBy],
         function (err) {
           if (err) reject(err);
           else resolve(this.lastID);
@@ -71,11 +78,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const attendances = await new Promise<any[]>((resolve, reject) => {
       db.all(
         `SELECT a.*, 
-                u.username as createdByUsername,
-                (SELECT COUNT(*) FROM attendance_records WHERE attendanceId = a.id) as signedCount
+                u.username as createdByUsername
          FROM attendances a
          JOIN users u ON a.createdBy = u.id
-         ORDER BY a.startTime DESC`,
+         ORDER BY a.dateStart DESC`,
         (err, rows) => {
           if (err) reject(err);
           else resolve(rows || []);
@@ -83,21 +89,43 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       );
     });
 
-    // 如果是普通用户，添加签到状态信息
-    if (!isAdmin) {
-      for (const attendance of attendances) {
-        const record = await new Promise<any>((resolve, reject) => {
-          db.get(
-            'SELECT * FROM attendance_records WHERE attendanceId = ? AND userId = ?',
-            [attendance.id, userId],
-            (err, row) => {
-              if (err) reject(err);
-              else resolve(row);
-            }
-          );
-        });
-        attendance.hasSigned = !!record;
-        attendance.signedAt = record?.signedAt;
+    // 为每个点名任务获取触发记录和签到统计
+    for (const attendance of attendances) {
+      // 获取所有触发记录
+      const triggers = await new Promise<any[]>((resolve, reject) => {
+        db.all(
+          `SELECT t.*,
+                  (SELECT COUNT(*) FROM attendance_records WHERE triggerId = t.id) as signedCount
+           FROM daily_attendance_triggers t
+           WHERE t.attendanceId = ?
+           ORDER BY t.triggerDate DESC`,
+          [attendance.id],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          }
+        );
+      });
+      
+      attendance.triggers = triggers;
+      attendance.totalTriggers = triggers.length;
+      
+      // 如果是普通用户，添加个人签到状态
+      if (!isAdmin && triggers.length > 0) {
+        for (const trigger of triggers) {
+          const record = await new Promise<any>((resolve, reject) => {
+            db.get(
+              'SELECT * FROM attendance_records WHERE triggerId = ? AND userId = ?',
+              [trigger.id, userId],
+              (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+              }
+            );
+          });
+          trigger.hasSigned = !!record;
+          trigger.signedAt = record?.signedAt;
+        }
       }
     }
 
@@ -133,14 +161,10 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       return res.status(404).json({ error: '点名任务不存在' });
     }
 
-    // 获取签到记录
-    const records = await new Promise<any[]>((resolve, reject) => {
+    // 获取所有触发记录及其签到记录
+    const triggers = await new Promise<any[]>((resolve, reject) => {
       db.all(
-        `SELECT ar.*, u.username, u.name, u.studentId
-         FROM attendance_records ar
-         JOIN users u ON ar.userId = u.id
-         WHERE ar.attendanceId = ?
-         ORDER BY ar.signedAt DESC`,
+        `SELECT * FROM daily_attendance_triggers WHERE attendanceId = ? ORDER BY triggerDate DESC`,
         [id],
         (err, rows) => {
           if (err) reject(err);
@@ -149,15 +173,33 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       );
     });
 
-    attendance.records = records;
-    attendance.signedCount = records.length;
+    for (const trigger of triggers) {
+      const records = await new Promise<any[]>((resolve, reject) => {
+        db.all(
+          `SELECT ar.*, u.username, u.name, u.studentId
+           FROM attendance_records ar
+           JOIN users u ON ar.userId = u.id
+           WHERE ar.triggerId = ?
+           ORDER BY ar.signedAt DESC`,
+          [trigger.id],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          }
+        );
+      });
+      trigger.records = records;
+      trigger.signedCount = records.length;
 
-    // 如果是普通用户，添加个人签到状态
-    if (!isAdmin) {
-      const myRecord = records.find(r => r.userId === userId);
-      attendance.hasSigned = !!myRecord;
-      attendance.mySignedAt = myRecord?.signedAt;
+      // 如果是普通用户，添加个人签到状态
+      if (!isAdmin) {
+        const myRecord = records.find(r => r.userId === userId);
+        trigger.hasSigned = !!myRecord;
+        trigger.mySignedAt = myRecord?.signedAt;
+      }
     }
+
+    attendance.triggers = triggers;
 
     res.json(attendance);
   } catch (error) {
@@ -173,8 +215,8 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
     const {
       name,
       description,
-      startTime,
-      endTime,
+      dateStart,
+      dateEnd,
       locationName,
       latitude,
       longitude,
@@ -182,13 +224,20 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       penaltyPoints
     } = req.body;
 
+    // 验证日期范围
+    const start = new Date(dateStart);
+    const end = new Date(dateEnd);
+    if (start > end) {
+      return res.status(400).json({ error: '开始日期不能晚于结束日期' });
+    }
+
     await new Promise<void>((resolve, reject) => {
       db.run(
         `UPDATE attendances 
-         SET name = ?, description = ?, startTime = ?, endTime = ?, 
+         SET name = ?, description = ?, dateStart = ?, dateEnd = ?, 
              locationName = ?, latitude = ?, longitude = ?, radius = ?, penaltyPoints = ?
          WHERE id = ?`,
-        [name, description || null, startTime, endTime, locationName, latitude, longitude, radius, penaltyPoints || 5, id],
+        [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, id],
         function (err) {
           if (err) reject(err);
           else if (this.changes === 0) reject(new Error('点名任务不存在'));
@@ -209,9 +258,27 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
   try {
     const { id } = req.params;
 
-    // 删除相关的签到记录
+    // 获取所有触发记录
+    const triggers = await new Promise<any[]>((resolve, reject) => {
+      db.all('SELECT id FROM daily_attendance_triggers WHERE attendanceId = ?', [id], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // 删除所有触发记录的签到记录
+    for (const trigger of triggers) {
+      await new Promise<void>((resolve, reject) => {
+        db.run('DELETE FROM attendance_records WHERE triggerId = ?', [trigger.id], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    // 删除所有触发记录
     await new Promise<void>((resolve, reject) => {
-      db.run('DELETE FROM attendance_records WHERE attendanceId = ?', [id], (err) => {
+      db.run('DELETE FROM daily_attendance_triggers WHERE attendanceId = ?', [id], (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -233,10 +300,10 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
   }
 });
 
-// 用户签到
-router.post('/:id/sign', authenticateToken, async (req: AuthRequest, res: Response) => {
+// 用户签到（签到到今天的触发记录）
+router.post('/:triggerId/sign', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const { triggerId } = req.params;
     const { latitude, longitude } = req.body;
     const userId = req.user!.userId;
 
@@ -244,36 +311,35 @@ router.post('/:id/sign', authenticateToken, async (req: AuthRequest, res: Respon
       return res.status(400).json({ error: '缺少位置信息' });
     }
 
-    // 获取点名任务信息
-    const attendance = await new Promise<any>((resolve, reject) => {
-      db.get('SELECT * FROM attendances WHERE id = ?', [id], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
+    // 获取触发记录和点名任务信息
+    const trigger = await new Promise<any>((resolve, reject) => {
+      db.get(
+        `SELECT t.*, a.locationName, a.latitude, a.longitude, a.radius, a.penaltyPoints
+         FROM daily_attendance_triggers t
+         JOIN attendances a ON t.attendanceId = a.id
+         WHERE t.id = ?`,
+        [triggerId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
     });
 
-    if (!attendance) {
-      return res.status(404).json({ error: '点名任务不存在' });
+    if (!trigger) {
+      return res.status(404).json({ error: '点名记录不存在' });
     }
 
-    // 检查是否在签到时间范围内
-    const now = new Date();
-    const startTime = new Date(attendance.startTime);
-    const endTime = new Date(attendance.endTime);
-
-    if (now < startTime) {
-      return res.status(400).json({ error: '签到尚未开始' });
-    }
-
-    if (now > endTime) {
-      return res.status(400).json({ error: '签到已截止' });
+    // 检查是否已完成
+    if (trigger.completed) {
+      return res.status(400).json({ error: '该点名已截止' });
     }
 
     // 检查是否已签到
     const existingRecord = await new Promise<any>((resolve, reject) => {
       db.get(
-        'SELECT * FROM attendance_records WHERE attendanceId = ? AND userId = ?',
-        [id, userId],
+        'SELECT * FROM attendance_records WHERE triggerId = ? AND userId = ?',
+        [triggerId, userId],
         (err, row) => {
           if (err) reject(err);
           else resolve(row);
@@ -287,25 +353,25 @@ router.post('/:id/sign', authenticateToken, async (req: AuthRequest, res: Respon
 
     // 验证地理位置
     const distance = calculateDistance(
-      attendance.latitude,
-      attendance.longitude,
+      trigger.latitude,
+      trigger.longitude,
       latitude,
       longitude
     );
 
-    if (distance > attendance.radius) {
+    if (distance > trigger.radius) {
       return res.status(400).json({
         error: '您不在指定的签到区域内',
         distance: Math.round(distance),
-        required: attendance.radius
+        required: trigger.radius
       });
     }
 
     // 创建签到记录
     await new Promise<void>((resolve, reject) => {
       db.run(
-        'INSERT INTO attendance_records (attendanceId, userId, latitude, longitude) VALUES (?, ?, ?, ?)',
-        [id, userId, latitude, longitude],
+        'INSERT INTO attendance_records (triggerId, userId, latitude, longitude) VALUES (?, ?, ?, ?)',
+        [triggerId, userId, latitude, longitude],
         (err) => {
           if (err) reject(err);
           else resolve();

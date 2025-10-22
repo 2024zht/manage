@@ -130,8 +130,8 @@ export const attendanceAPI = {
   create: (data: {
     name: string;
     description?: string;
-    startTime: string;
-    endTime: string;
+    dateStart: string;
+    dateEnd: string;
     locationName: string;
     latitude: number;
     longitude: number;
@@ -142,8 +142,8 @@ export const attendanceAPI = {
   update: (id: number, data: {
     name: string;
     description?: string;
-    startTime: string;
-    endTime: string;
+    dateStart: string;
+    dateEnd: string;
     locationName: string;
     latitude: number;
     longitude: number;
@@ -153,8 +153,8 @@ export const attendanceAPI = {
   
   delete: (id: number) => api.delete(`/attendances/${id}`),
   
-  sign: (id: number, latitude: number, longitude: number) =>
-    api.post(`/attendances/${id}/sign`, { latitude, longitude }),
+  sign: (triggerId: number, latitude: number, longitude: number) =>
+    api.post(`/attendances/${triggerId}/sign`, { latitude, longitude }),
 };
 
 export default api;

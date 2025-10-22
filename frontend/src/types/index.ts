@@ -98,8 +98,8 @@ export interface Attendance {
   id: number;
   name: string;
   description?: string;
-  startTime: string;
-  endTime: string;
+  dateStart: string;
+  dateEnd: string;
   locationName: string;
   latitude: number;
   longitude: number;
@@ -108,18 +108,27 @@ export interface Attendance {
   createdBy: number;
   createdByUsername?: string;
   createdAt: string;
+  completed: boolean;
+  triggers?: DailyAttendanceTrigger[];
+  totalTriggers?: number;
+}
+
+export interface DailyAttendanceTrigger {
+  id: number;
+  attendanceId: number;
+  triggerDate: string;
+  triggerTime: string;
   notificationSent: boolean;
   completed: boolean;
   signedCount?: number;
   hasSigned?: boolean;
   signedAt?: string;
-  mySignedAt?: string;
   records?: AttendanceRecord[];
 }
 
 export interface AttendanceRecord {
   id: number;
-  attendanceId: number;
+  triggerId: number;
   userId: number;
   username: string;
   name: string;

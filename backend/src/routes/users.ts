@@ -3,6 +3,7 @@ import { getAll, getOne, runQuery } from '../database/db';
 import { User } from '../types';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
+import { sendPointRequestNotification } from '../services/email';
 
 const router = express.Router();
 
@@ -273,9 +274,12 @@ router.patch('/requests/:id', authenticateToken, requireAdmin, async (req: AuthR
   }
 
   try {
-    // 获取申诉信息
+    // 获取申诉信息和用户信息
     const request = await getOne<any>(
-      'SELECT * FROM point_requests WHERE id = ?',
+      `SELECT pr.*, u.email, u.name 
+       FROM point_requests pr
+       JOIN users u ON pr.userId = u.id
+       WHERE pr.id = ?`,
       [requestId]
     );
 
@@ -306,6 +310,22 @@ router.patch('/requests/:id', authenticateToken, requireAdmin, async (req: AuthR
           [request.userId, request.points, `申诉通过: ${request.reason}`, req.user!.userId]
         );
       }
+    }
+
+    // 发送邮件通知用户
+    try {
+      await sendPointRequestNotification(
+        request.email,
+        request.name,
+        request.points,
+        request.reason,
+        status,
+        adminComment
+      );
+      console.log(`Point request notification sent to ${request.email}`);
+    } catch (emailError) {
+      console.error('Failed to send point request notification:', emailError);
+      // 邮件发送失败不影响主流程
     }
 
     res.json({ message: '申诉处理完成' });

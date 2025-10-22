@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { User, Rule, PointRequest } from '../types';
 import { userAPI, ruleAPI } from '../services/api';
-import { Settings, Users, BookOpen, Edit2, Trash2, Plus, Save, X, Upload, Download, MessageSquare, Check, XCircle } from 'lucide-react';
+import { Settings, Users, BookOpen, Edit2, Trash2, Plus, Save, X, Upload, Download, MessageSquare, Check, XCircle, MapPin } from 'lucide-react';
+import AttendanceManagementPanel from './AttendanceManagementPanel';
 
 const Admin: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'rules' | 'import' | 'requests'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'rules' | 'import' | 'requests' | 'attendance'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [requests, setRequests] = useState<PointRequest[]>([]);
@@ -310,6 +311,17 @@ const Admin: React.FC = () => {
                   {requests.filter(r => r.status === 'pending').length}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveTab('attendance')}
+              className={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm sm:text-base ${
+                activeTab === 'attendance'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <MapPin className="inline-block h-5 w-5 mr-2" />
+              点名管理
             </button>
           </nav>
         </div>
@@ -661,6 +673,11 @@ const Admin: React.FC = () => {
               </ul>
             </div>
           </div>
+        )}
+
+        {/* 点名管理 */}
+        {activeTab === 'attendance' && (
+          <AttendanceManagementPanel />
         )}
 
         {/* 异议管理 */}

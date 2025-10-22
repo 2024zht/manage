@@ -174,10 +174,46 @@ export const sendAttendanceNotification = async (
   await sendEmail(userEmails, subject, html);
 };
 
+// 发送异议处理结果通知
+export const sendPointRequestNotification = async (
+  userEmail: string,
+  userName: string,
+  points: number,
+  reason: string,
+  status: 'approved' | 'rejected',
+  adminComment?: string
+): Promise<void> => {
+  const statusText = status === 'approved' ? '已批准' : '已拒绝';
+  const statusColor = status === 'approved' ? '#10b981' : '#ef4444';
+  
+  const subject = `【异议处理结果】您的积分异议申请已处理`;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #1e40af;">积分异议处理结果</h2>
+      <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>申请人：</strong>${userName}</p>
+        <p><strong>申请积分：</strong><span style="color: ${points > 0 ? '#10b981' : '#ef4444'}; font-weight: bold;">${points > 0 ? '+' : ''}${points} 分</span></p>
+        <p><strong>申请理由：</strong>${reason}</p>
+        <div style="margin-top: 20px; padding: 15px; background-color: white; border-left: 4px solid ${statusColor}; border-radius: 4px;">
+          <p style="margin: 0;"><strong>处理结果：</strong><span style="color: ${statusColor}; font-size: 18px; font-weight: bold;">${statusText}</span></p>
+          ${adminComment ? `<p style="margin-top: 10px;"><strong>管理员备注：</strong>${adminComment}</p>` : ''}
+        </div>
+      </div>
+      <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+        此邮件由实验室管理系统自动发送，请勿回复。
+      </p>
+    </div>
+  `;
+
+  await sendEmail(userEmail, subject, html);
+};
+
 export default {
   sendEmail,
   sendLeaveApplicationNotification,
   sendLeaveApprovalNotification,
   sendAttendanceNotification,
+  sendPointRequestNotification,
 };
 

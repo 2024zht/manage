@@ -1,11 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { attendanceAPI } from '../services/api';
-import { Attendance } from '../types';
-import { useAuth } from '../contexts/AuthContext';
-import { MapPin, Clock, Users, Plus, Edit, Trash2, Calendar } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, MapPin, Clock } from 'lucide-react';
 
-const AttendanceManagement: React.FC = () => {
-  const { user } = useAuth();
+interface Attendance {
+  id: number;
+  name: string;
+  description?: string;
+  dateStart: string;
+  dateEnd: string;
+  locationName: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  penaltyPoints: number;
+  createdBy: number;
+  createdByUsername?: string;
+  createdAt: string;
+  completed: boolean;
+  triggers?: any[];
+  totalTriggers?: number;
+}
+
+const AttendanceManagementPanel: React.FC = () => {
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -16,8 +32,8 @@ const AttendanceManagement: React.FC = () => {
     dateStart: '',
     dateEnd: '',
     locationName: '',
-    latitude: 36.546431870593665,
-    longitude: 116.83040694925626,
+    latitude: 36.546431870593665,  // 默认纬度
+    longitude: 116.83040694925626,  // 默认经度
     radius: 200,
     penaltyPoints: 5,
   });
@@ -52,9 +68,9 @@ const AttendanceManagement: React.FC = () => {
       setEditingId(null);
       resetForm();
       fetchAttendances();
-    } catch (error) {
+    } catch (error: any) {
       console.error('保存点名任务失败:', error);
-      alert('操作失败');
+      alert(error.response?.data?.error || '操作失败');
     }
   };
 
@@ -75,7 +91,7 @@ const AttendanceManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('确定要删除这个点名任务吗？')) return;
+    if (!window.confirm('确定要删除这个点名任务吗？这将删除所有相关的签到记录。')) return;
     
     try {
       await attendanceAPI.delete(id);
@@ -101,25 +117,21 @@ const AttendanceManagement: React.FC = () => {
     });
   };
 
-  const getStatusBadge = (attendance: Attendance) => {
+  const getStatusText = (attendance: Attendance) => {
     const today = new Date().toISOString().split('T')[0];
     const start = attendance.dateStart;
     const end = attendance.dateEnd;
 
     if (attendance.completed) {
-      return <span className="px-2 py-1 bg-gray-500 text-white text-xs rounded">已完成</span>;
+      return { text: '已完成', color: 'bg-gray-500' };
     } else if (today < start) {
-      return <span className="px-2 py-1 bg-blue-500 text-white text-xs rounded">未开始</span>;
+      return { text: '未开始', color: 'bg-blue-500' };
     } else if (today >= start && today <= end) {
-      return <span className="px-2 py-1 bg-green-500 text-white text-xs rounded">进行中</span>;
+      return { text: '进行中', color: 'bg-green-500' };
     } else {
-      return <span className="px-2 py-1 bg-orange-500 text-white text-xs rounded">待处理</span>;
+      return { text: '已结束', color: 'bg-orange-500' };
     }
   };
-
-  if (!user?.isAdmin) {
-    return <div className="text-center py-12 text-red-500">您没有权限访问此页面</div>;
-  }
 
   if (loading) {
     return (
@@ -132,7 +144,12 @@ const AttendanceManagement: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">点名管理</h2>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">点名任务管理</h3>
+          <p className="text-sm text-gray-600 mt-1">
+            设置日期范围，系统将在每天晚上9:15-9:25随机时间发送点名通知
+          </p>
+        </div>
         <button
           onClick={() => {
             resetForm();
@@ -191,6 +208,7 @@ const AttendanceManagement: React.FC = () => {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">点名开始日期</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -203,7 +221,14 @@ const AttendanceManagement: React.FC = () => {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">点名结束日期</p>
                 </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  💡 <strong>触发时间说明：</strong>系统将在日期范围内的每天晚上9:15-9:25之间随机选择一个时间发送点名通知，签到时限为1分钟。
+                </p>
               </div>
 
               <div>
@@ -301,75 +326,103 @@ const AttendanceManagement: React.FC = () => {
       )}
 
       {/* 点名列表 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="space-y-4">
         {attendances.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
             暂无点名任务，点击"创建点名任务"开始
           </div>
         ) : (
-          attendances.map((attendance) => (
-            <div
-              key={attendance.id}
-              className="bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition"
-            >
-              <div className="flex justify-between items-start mb-3">
-                <h3 className="font-semibold text-lg text-gray-800">{attendance.name}</h3>
-                {getStatusBadge(attendance)}
-              </div>
+          attendances.map((attendance) => {
+            const status = getStatusText(attendance);
+            return (
+              <div
+                key={attendance.id}
+                className="bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-semibold text-lg text-gray-800">{attendance.name}</h3>
+                      <span className={`px-2 py-1 ${status.color} text-white text-xs rounded`}>
+                        {status.text}
+                      </span>
+                    </div>
+                    {attendance.description && (
+                      <p className="text-sm text-gray-600 mt-1">{attendance.description}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(attendance)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded transition"
+                      title="编辑"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(attendance.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded transition"
+                      title="删除"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
 
-              {attendance.description && (
-                <p className="text-sm text-gray-600 mb-3">{attendance.description}</p>
-              )}
-
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center">
-                  <Calendar className="h-4 w-4 mr-2 text-blue-600" />
-                  开始：{attendance.dateStart}
-                </div>
-                <div className="flex items-center">
-                  <Clock className="h-4 w-4 mr-2 text-red-600" />
-                  截止：{attendance.dateEnd}
-                </div>
-                <div className="flex items-center">
-                  <MapPin className="h-4 w-4 mr-2 text-green-600" />
-                  {attendance.locationName} ({attendance.radius}米)
-                </div>
-                {attendance.triggers && (
+                <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
                   <div className="flex items-center">
-                    <Users className="h-4 w-4 mr-2 text-purple-600" />
-                    已触发：{attendance.totalTriggers || attendance.triggers.length} 次
+                    <Calendar className="h-4 w-4 mr-2 text-blue-600" />
+                    日期范围：{attendance.dateStart} 至 {attendance.dateEnd}
+                  </div>
+                  <div className="flex items-center">
+                    <Clock className="h-4 w-4 mr-2 text-green-600" />
+                    触发时间：每天晚上9:15-9:25随机
+                  </div>
+                  <div className="flex items-center">
+                    <MapPin className="h-4 w-4 mr-2 text-red-600" />
+                    {attendance.locationName} ({attendance.radius}米)
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    扣分：{attendance.penaltyPoints} 分
+                  </div>
+                </div>
+
+                {attendance.triggers && attendance.triggers.length > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-sm font-medium text-gray-700 mb-2">
+                      已触发 {attendance.totalTriggers} 次
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {attendance.triggers.slice(0, 3).map((trigger: any) => (
+                        <div key={trigger.id} className="text-xs bg-gray-50 p-2 rounded">
+                          <div className="font-medium">{trigger.triggerDate}</div>
+                          <div className="text-gray-600">
+                            触发时间：{trigger.triggerTime}
+                          </div>
+                          <div className="text-gray-600">
+                            签到人数：{trigger.signedCount || 0}
+                          </div>
+                          <div className={`${trigger.completed ? 'text-gray-500' : 'text-green-600'}`}>
+                            {trigger.completed ? '已完成' : '进行中'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {attendance.triggers.length > 3 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        还有 {attendance.triggers.length - 3} 条记录...
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
-
-              <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                <div className="text-xs text-gray-500">
-                  扣分：{attendance.penaltyPoints} 分
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(attendance)}
-                    className="p-2 text-blue-600 hover:bg-blue-50 rounded transition"
-                    title="编辑"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(attendance.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded transition"
-                    title="删除"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
   );
 };
 
-export default AttendanceManagement;
+export default AttendanceManagementPanel;
 
