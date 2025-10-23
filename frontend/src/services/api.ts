@@ -162,6 +162,10 @@ export const attendanceAPI = {
   
   sign: (triggerId: number, latitude: number, longitude: number) =>
     api.post(`/attendances/${triggerId}/sign`, { latitude, longitude }),
+  
+  // 手动触发点名
+  trigger: (id: number, options: { immediate?: boolean; customTime?: string }) =>
+    api.post(`/attendances/${id}/trigger`, options),
 };
 
 export default api;

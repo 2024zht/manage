@@ -1,16 +1,23 @@
 import nodemailer from 'nodemailer';
 import { db } from '../database/db';
 
-// 配置邮件发送器
-const transporter = nodemailer.createTransport({
-  host: 'smtp.qq.com',
-  port: 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.EMAIL_USER || 'roboticlab@qq.com',
-    pass: process.env.EMAIL_PASS || 'ghujiouvebmdcieh', // QQ邮箱授权码
-  },
-});
+// 创建邮件发送器（延迟创建，确保环境变量已加载）
+const getTransporter = () => {
+  const emailUser = process.env.EMAIL_USER || 'roboticlab@qq.com';
+  const emailPass = process.env.EMAIL_PASS || 'ghujiouvebmdcieh';
+  
+  console.log(`Creating email transporter with user: ${emailUser}`);
+  
+  return nodemailer.createTransport({
+    host: 'smtp.qq.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: emailUser,
+      pass: emailPass,
+    },
+  });
+};
 
 // 发送邮件的通用函数
 export const sendEmail = async (
@@ -19,18 +26,35 @@ export const sendEmail = async (
   html: string
 ): Promise<void> => {
   try {
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    
+    console.log(`Attempting to send email to ${to}`);
+    console.log(`Email config - USER: ${emailUser ? 'SET' : 'NOT SET'}, PASS: ${emailPass ? 'SET' : 'NOT SET'}`);
+    
+    // 检查邮件配置是否有效
+    if (!emailUser || !emailPass) {
+      console.warn('⚠️ Email configuration not found in environment variables, skipping email sending');
+      console.warn('Please set EMAIL_USER and EMAIL_PASS in .env file');
+      return;
+    }
+
+    const transporter = getTransporter();
+    
     const mailOptions = {
-      from: `"实验室管理系统" <${process.env.EMAIL_USER || 'roboticlab@qq.com'}>`,
+      from: `"实验室管理系统" <${emailUser}>`,
       to: Array.isArray(to) ? to.join(',') : to,
       subject,
       html,
     };
 
+    console.log(`Sending email with subject: ${subject}`);
     await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully to ${to}`);
+    console.log(`✅ Email sent successfully to ${to}`);
   } catch (error) {
-    console.error('Email sending failed:', error);
-    throw error;
+    console.error('❌ Email sending failed:', error);
+    // 不抛出错误，避免影响主流程
+    console.warn('Email feature is currently unavailable. Please check your email configuration.');
   }
 };
 
@@ -174,6 +198,64 @@ export const sendAttendanceNotification = async (
   await sendEmail(userEmails, subject, html);
 };
 
+// 发送异议提交通知给管理员
+export const sendPointRequestSubmitNotification = async (
+  applicantName: string,
+  studentId: string,
+  points: number,
+  reason: string,
+  requestId: number
+): Promise<void> => {
+  // 从数据库获取所有管理员的邮箱
+  const adminEmails = await new Promise<string[]>((resolve, reject) => {
+    db.all('SELECT email FROM users WHERE isAdmin = 1', (err, rows: any[]) => {
+      if (err) reject(err);
+      else resolve(rows.map(row => row.email));
+    });
+  });
+
+  if (adminEmails.length === 0) {
+    console.warn('No admin emails found, skipping notification');
+    return;
+  }
+
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:2111';
+  
+  const subject = `【积分异议提醒】用户 ${applicantName} 提交了新的积分异议`;
+  
+  const pointsColor = points > 0 ? '#10b981' : '#ef4444';
+  const pointsText = points > 0 ? `+${points}` : `${points}`;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #1e40af;">新的积分异议待处理</h2>
+      <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>申请人姓名：</strong>${applicantName}</p>
+        <p><strong>学号/ID：</strong>${studentId}</p>
+        <p><strong>申请调整积分：</strong><span style="color: ${pointsColor}; font-weight: bold; font-size: 18px;">${pointsText} 分</span></p>
+        <p><strong>异议理由：</strong>${reason}</p>
+      </div>
+      <div style="background-color: #fef3c7; padding: 15px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e;">
+          ⚠️ <strong>提示：</strong>请及时处理用户的积分异议申请。
+        </p>
+      </div>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${baseUrl}/admin?tab=requests" 
+           style="background-color: #1e40af; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block;">
+          立即处理
+        </a>
+      </div>
+      <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+        此邮件由实验室管理系统自动发送，请勿回复。
+      </p>
+    </div>
+  `;
+
+  await sendEmail(adminEmails, subject, html);
+  console.log(`Point request submit notification sent to ${adminEmails.length} admin(s)`);
+};
+
 // 发送异议处理结果通知
 export const sendPointRequestNotification = async (
   userEmail: string,
@@ -214,6 +296,7 @@ export default {
   sendLeaveApplicationNotification,
   sendLeaveApprovalNotification,
   sendAttendanceNotification,
+  sendPointRequestSubmitNotification,
   sendPointRequestNotification,
 };
 

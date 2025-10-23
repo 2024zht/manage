@@ -102,6 +102,8 @@ async function checkAndNotifyAttendances() {
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     const today = now.toISOString().split('T')[0];
     
+    console.log(`[Scheduler] Checking notifications at ${currentTime} on ${today}`);
+    
     // 查找所有应该发送通知但还没发送的触发记录
     const triggers = await new Promise<any[]>((resolve, reject) => {
       db.all(
@@ -118,6 +120,10 @@ async function checkAndNotifyAttendances() {
         }
       );
     });
+    
+    if (triggers.length > 0) {
+      console.log(`[Scheduler] Found ${triggers.length} trigger(s) to notify`);
+    }
 
     for (const trigger of triggers) {
       try {

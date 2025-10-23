@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../database/db");
@@ -252,6 +285,139 @@ router.delete('/:id', auth_1.authenticateToken, auth_1.requireAdmin, async (req,
     }
     catch (error) {
         console.error('Delete attendance error:', error);
+        res.status(500).json({ error: '服务器错误' });
+    }
+});
+// 管理员手动触发点名（立即触发或设置特定时间）
+router.post('/:id/trigger', auth_1.authenticateToken, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { immediate = false, customTime } = req.body;
+        // 获取点名任务信息
+        const attendance = await new Promise((resolve, reject) => {
+            db_1.db.get('SELECT * FROM attendances WHERE id = ?', [id], (err, row) => {
+                if (err)
+                    reject(err);
+                else
+                    resolve(row);
+            });
+        });
+        if (!attendance) {
+            return res.status(404).json({ error: '点名任务不存在' });
+        }
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        console.log(`[Trigger] Attempting to trigger attendance ${id} for date: ${today}`);
+        // 检查今天是否已经触发过
+        const existingTrigger = await new Promise((resolve, reject) => {
+            db_1.db.get('SELECT id FROM daily_attendance_triggers WHERE attendanceId = ? AND triggerDate = ?', [id, today], (err, row) => {
+                if (err)
+                    reject(err);
+                else
+                    resolve(row);
+            });
+        });
+        if (existingTrigger) {
+            console.log(`[Trigger] Already triggered today for attendance ${id}`);
+            return res.status(400).json({ error: '今天已经触发过点名了' });
+        }
+        let triggerTime;
+        if (immediate) {
+            // 立即触发：设置为当前时间
+            triggerTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+            console.log(`[Trigger] Immediate trigger at: ${triggerTime}`);
+        }
+        else if (customTime) {
+            // 使用自定义时间（格式：HH:MM）
+            triggerTime = `${customTime}:00`;
+            console.log(`[Trigger] Custom time trigger scheduled for: ${triggerTime}`);
+        }
+        else {
+            return res.status(400).json({ error: '请指定触发方式' });
+        }
+        // 创建触发记录
+        const triggerId = await new Promise((resolve, reject) => {
+            db_1.db.run(`INSERT INTO daily_attendance_triggers (attendanceId, triggerDate, triggerTime, notificationSent, completed, isManual)
+         VALUES (?, ?, ?, 0, 0, 1)`, [id, today, triggerTime], function (err) {
+                if (err) {
+                    console.error(`[Trigger] Failed to create trigger record:`, err);
+                    reject(err);
+                }
+                else {
+                    console.log(`[Trigger] Created trigger record with ID: ${this.lastID}`);
+                    resolve(this.lastID);
+                }
+            });
+        });
+        if (immediate) {
+            // 立即发送通知
+            const { sendAttendanceNotification } = await Promise.resolve().then(() => __importStar(require('../services/email')));
+            // 获取目标用户邮箱
+            const targetGrades = JSON.parse(attendance.targetGrades || '[]');
+            const targetUserIds = JSON.parse(attendance.targetUserIds || '[]');
+            let sql = 'SELECT email FROM users WHERE isAdmin = 0';
+            const params = [];
+            if (targetUserIds.length > 0 && targetGrades.length > 0) {
+                sql += ' AND (grade IN (' + targetGrades.map(() => '?').join(',') + ') OR id IN (' + targetUserIds.map(() => '?').join(',') + '))';
+                params.push(...targetGrades, ...targetUserIds);
+            }
+            else if (targetUserIds.length > 0) {
+                sql += ' AND id IN (' + targetUserIds.map(() => '?').join(',') + ')';
+                params.push(...targetUserIds);
+            }
+            else if (targetGrades.length > 0) {
+                sql += ' AND grade IN (' + targetGrades.map(() => '?').join(',') + ')';
+                params.push(...targetGrades);
+            }
+            const users = await new Promise((resolve, reject) => {
+                db_1.db.all(sql, params, (err, rows) => {
+                    if (err)
+                        reject(err);
+                    else
+                        resolve(rows || []);
+                });
+            });
+            const userEmails = users.map(u => u.email);
+            if (userEmails.length > 0) {
+                const deadline = new Date();
+                deadline.setMinutes(deadline.getMinutes() + 1);
+                const deadlineStr = deadline.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                try {
+                    await sendAttendanceNotification(userEmails, attendance.name, deadlineStr, attendance.locationName, attendance.latitude, attendance.longitude, attendance.radius);
+                    // 标记为已发送通知
+                    await new Promise((resolve, reject) => {
+                        db_1.db.run('UPDATE daily_attendance_triggers SET notificationSent = 1 WHERE id = ?', [triggerId], (err) => {
+                            if (err)
+                                reject(err);
+                            else
+                                resolve();
+                        });
+                    });
+                }
+                catch (emailError) {
+                    console.error('Failed to send immediate notification:', emailError);
+                }
+            }
+            res.json({
+                message: '点名已立即触发，通知已发送',
+                triggerId
+            });
+        }
+        else {
+            res.json({
+                message: `点名已设置在 ${customTime} 触发`,
+                triggerId
+            });
+        }
+    }
+    catch (error) {
+        console.error('Trigger attendance error:', error);
         res.status(500).json({ error: '服务器错误' });
     }
 });

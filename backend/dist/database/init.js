@@ -199,6 +199,7 @@ const initDatabase = async () => {
           triggerTime TEXT NOT NULL,
           notificationSent INTEGER DEFAULT 0,
           completed INTEGER DEFAULT 0,
+          isManual INTEGER DEFAULT 0,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (attendanceId) REFERENCES attendances(id),
           UNIQUE(attendanceId, triggerDate)

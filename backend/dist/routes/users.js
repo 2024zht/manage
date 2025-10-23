@@ -172,7 +172,29 @@ router.post('/requests', auth_1.authenticateToken, async (req, res) => {
         return res.status(400).json({ error: '请提供积分和理由' });
     }
     try {
-        await (0, db_1.runQuery)('INSERT INTO point_requests (userId, points, reason, status) VALUES (?, ?, ?, ?)', [req.user.userId, points, reason, 'pending']);
+        // 获取用户信息
+        const user = await (0, db_1.getOne)('SELECT name, studentId FROM users WHERE id = ?', [req.user.userId]);
+        if (!user) {
+            return res.status(404).json({ error: '用户不存在' });
+        }
+        // 插入申诉记录
+        const requestId = await new Promise((resolve, reject) => {
+            db_1.db.run('INSERT INTO point_requests (userId, points, reason, status) VALUES (?, ?, ?, ?)', [req.user.userId, points, reason, 'pending'], function (err) {
+                if (err)
+                    reject(err);
+                else
+                    resolve(this.lastID);
+            });
+        });
+        // 发送邮件通知管理员
+        try {
+            await (0, email_1.sendPointRequestSubmitNotification)(user.name, user.studentId, points, reason, requestId);
+            console.log('Point request submit notification sent to admins');
+        }
+        catch (emailError) {
+            console.error('Failed to send point request submit notification:', emailError);
+            // 邮件发送失败不影响申诉提交
+        }
         res.status(201).json({ message: '申诉已提交' });
     }
     catch (error) {

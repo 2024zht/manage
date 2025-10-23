@@ -1,9 +1,9 @@
 import express, { Response } from 'express';
-import { getAll, getOne, runQuery } from '../database/db';
+import { getAll, getOne, runQuery, db } from '../database/db';
 import { User } from '../types';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
-import { sendPointRequestNotification } from '../services/email';
+import { sendPointRequestNotification, sendPointRequestSubmitNotification } from '../services/email';
 
 const router = express.Router();
 
@@ -213,10 +213,43 @@ router.post('/requests', authenticateToken, async (req: AuthRequest, res: Respon
   }
 
   try {
-    await runQuery(
-      'INSERT INTO point_requests (userId, points, reason, status) VALUES (?, ?, ?, ?)',
-      [req.user!.userId, points, reason, 'pending']
+    // 获取用户信息
+    const user = await getOne<any>(
+      'SELECT name, studentId FROM users WHERE id = ?',
+      [req.user!.userId]
     );
+
+    if (!user) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 插入申诉记录
+    const requestId = await new Promise<number>((resolve, reject) => {
+      db.run(
+        'INSERT INTO point_requests (userId, points, reason, status) VALUES (?, ?, ?, ?)',
+        [req.user!.userId, points, reason, 'pending'],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
+        }
+      );
+    });
+
+    // 发送邮件通知管理员
+    try {
+      await sendPointRequestSubmitNotification(
+        user.name,
+        user.studentId,
+        points,
+        reason,
+        requestId
+      );
+      console.log('Point request submit notification sent to admins');
+    } catch (emailError) {
+      console.error('Failed to send point request submit notification:', emailError);
+      // 邮件发送失败不影响申诉提交
+    }
+
     res.status(201).json({ message: '申诉已提交' });
   } catch (error) {
     console.error('Create request error:', error);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { attendanceAPI, userAPI } from '../services/api';
-import { Plus, Edit, Trash2, Calendar, MapPin, Clock, Users as UsersIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, MapPin, Clock, Users as UsersIcon, Zap } from 'lucide-react';
 import { User } from '../types';
 
 interface Attendance {
@@ -30,6 +30,9 @@ const AttendanceManagementPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [showTriggerModal, setShowTriggerModal] = useState(false);
+  const [triggeringId, setTriggeringId] = useState<number | null>(null);
+  const [customTime, setCustomTime] = useState('21:15');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -38,7 +41,7 @@ const AttendanceManagementPanel: React.FC = () => {
     locationName: '',
     latitude: 36.546431870593665,  // 默认纬度
     longitude: 116.83040694925626,  // 默认经度
-    radius: 200,
+    radius: 100,
     penaltyPoints: 5,
     targetGrades: ['2024', '2025'] as string[],  // 默认面向2024和2025级
     targetUserIds: [] as number[],
@@ -115,6 +118,34 @@ const AttendanceManagementPanel: React.FC = () => {
     }
   };
 
+  const handleTriggerNow = async (id: number) => {
+    if (!window.confirm('确定要立即触发点名吗？将立即发送邮件通知给目标用户。')) return;
+    
+    try {
+      await attendanceAPI.trigger(id, { immediate: true });
+      alert('点名已立即触发，邮件通知已发送！');
+      fetchData();
+    } catch (error: any) {
+      console.error('触发点名失败:', error);
+      alert(error.response?.data?.error || '触发点名失败');
+    }
+  };
+
+  const handleTriggerCustom = async () => {
+    if (!triggeringId) return;
+    
+    try {
+      await attendanceAPI.trigger(triggeringId, { customTime });
+      alert(`点名已设置在 ${customTime} 触发！`);
+      setShowTriggerModal(false);
+      setTriggeringId(null);
+      fetchData();
+    } catch (error: any) {
+      console.error('设置触发时间失败:', error);
+      alert(error.response?.data?.error || '设置触发时间失败');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -124,7 +155,7 @@ const AttendanceManagementPanel: React.FC = () => {
       locationName: '',
       latitude: 36.546431870593665,
       longitude: 116.83040694925626,
-      radius: 200,
+      radius: 100,
       penaltyPoints: 5,
       targetGrades: ['2024', '2025'],
       targetUserIds: [],
@@ -194,6 +225,48 @@ const AttendanceManagementPanel: React.FC = () => {
           创建点名任务
         </button>
       </div>
+
+      {/* 自定义触发时间模态框 */}
+      {showTriggerModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">设置触发时间</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  触发时间
+                </label>
+                <input
+                  type="time"
+                  value={customTime}
+                  onChange={(e) => setCustomTime(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  将在今天的指定时间触发点名并发送邮件通知
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleTriggerCustom}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  确认设置
+                </button>
+                <button
+                  onClick={() => {
+                    setShowTriggerModal(false);
+                    setTriggeringId(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 创建/编辑表单 */}
       {showForm && (
@@ -473,7 +546,7 @@ const AttendanceManagementPanel: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
+                <div className="grid grid-cols-2 gap-3 text-sm text-gray-600 mb-4">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-2 text-blue-600" />
                     日期范围：{attendance.dateStart} 至 {attendance.dateEnd}
@@ -489,6 +562,29 @@ const AttendanceManagementPanel: React.FC = () => {
                   <div className="text-sm text-gray-600">
                     扣分：{attendance.penaltyPoints} 分
                   </div>
+                </div>
+
+                {/* 触发点名按钮 */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => handleTriggerNow(attendance.id)}
+                    className="flex-1 flex items-center justify-center px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition"
+                    title="立即触发点名"
+                  >
+                    <Zap className="h-4 w-4 mr-1" />
+                    立即点名
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTriggeringId(attendance.id);
+                      setShowTriggerModal(true);
+                    }}
+                    className="flex-1 flex items-center justify-center px-3 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                    title="设置触发时间"
+                  >
+                    <Clock className="h-4 w-4 mr-1" />
+                    定时点名
+                  </button>
                 </div>
 
                 {attendance.triggers && attendance.triggers.length > 0 && (

@@ -95,6 +95,7 @@ async function checkAndNotifyAttendances() {
         const now = new Date();
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
         const today = now.toISOString().split('T')[0];
+        console.log(`[Scheduler] Checking notifications at ${currentTime} on ${today}`);
         // 查找所有应该发送通知但还没发送的触发记录
         const triggers = await new Promise((resolve, reject) => {
             db_1.db.all(`SELECT t.*, a.name, a.locationName, a.latitude, a.longitude, a.radius
@@ -109,6 +110,9 @@ async function checkAndNotifyAttendances() {
                     resolve(rows || []);
             });
         });
+        if (triggers.length > 0) {
+            console.log(`[Scheduler] Found ${triggers.length} trigger(s) to notify`);
+        }
         for (const trigger of triggers) {
             try {
                 // 获取点名任务的面向人群设置
